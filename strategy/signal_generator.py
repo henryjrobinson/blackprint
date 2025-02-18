@@ -1,123 +1,58 @@
-from decimal import Decimal
-from typing import Literal, Optional
-
-PositionType = Literal['long', 'short']
+import pandas as pd
+import pandas_ta as ta
+import numpy as np
+from typing import Optional, Tuple, Dict, Any
 
 class SignalGenerator:
-    """
-    Implements signal generation logic from the Blackprint strategy
-    """
-    
-    def check_long_entry(self,
-                        close: float,
-                        ema_5: float,
-                        ema_13: float,
-                        ema_34: float,
-                        ema_89: float,
-                        psar: float,
-                        macd_line: Optional[float] = None,
-                        signal_line: Optional[float] = None) -> bool:
+    def __init__(self, ema_fast: int = 9, ema_slow: int = 21, rsi_period: int = 14):
+        self.ema_fast = ema_fast
+        self.ema_slow = ema_slow
+        self.rsi_period = rsi_period
+
+    def generate_signals(self, data: pd.DataFrame) -> Dict[str, Any]:
         """
-        Check if conditions for long entry are met
+        Generate trading signals based on technical indicators.
         
         Args:
-            close: Current closing price
-            ema_5: 5-period EMA
-            ema_13: 13-period EMA
-            ema_34: 34-period EMA
-            ema_89: 89-period EMA
-            psar: Current Parabolic SAR value
-            macd_line: Optional MACD line value
-            signal_line: Optional MACD signal line value
+            data: DataFrame with OHLCV data
             
         Returns:
-            Boolean indicating if long entry conditions are met
+            Dict with signal information
         """
-        # Check if not in unordered phase
-        if (ema_13 < ema_34 and ema_13 > ema_89) or (ema_13 > ema_34 and ema_13 < ema_89):
-            return False
-            
-        # Check if price pulled back to 13 EMA
-        if abs(close - ema_13) / ema_13 > 0.001:  # 0.1% threshold
-            return False
-            
-        # Check if price is above 5 EMA
-        if close <= ema_5:
-            return False
-            
-        # Check if PSAR is below price
-        if psar >= close:
-            return False
-            
-        # Optional MACD confirmation
-        if macd_line is not None and signal_line is not None:
-            if macd_line <= signal_line:  # Not bullish
-                return False
-                
-        return True
-    
-    def check_short_entry(self,
-                         close: float,
-                         ema_13: float,
-                         ema_34: float,
-                         ema_89: float,
-                         psar: float,
-                         macd_line: Optional[float] = None,
-                         signal_line: Optional[float] = None) -> bool:
-        """
-        Check if conditions for short entry are met
+        # Calculate indicators
+        data['ema_fast'] = ta.ema(data['close'], length=self.ema_fast)
+        data['ema_slow'] = ta.ema(data['close'], length=self.ema_slow)
+        data['rsi'] = ta.rsi(data['close'], length=self.rsi_period)
         
-        Args:
-            close: Current closing price
-            ema_13: 13-period EMA
-            ema_34: 34-period EMA
-            ema_89: 89-period EMA
-            psar: Current Parabolic SAR value
-            macd_line: Optional MACD line value
-            signal_line: Optional MACD signal line value
-            
-        Returns:
-            Boolean indicating if short entry conditions are met
-        """
-        # Check if not in unordered phase
-        if (ema_13 < ema_34 and ema_13 > ema_89) or (ema_13 > ema_34 and ema_13 < ema_89):
-            return False
-            
-        # Check if price pulled back to 34 EMA
-        if abs(close - ema_34) / ema_34 > 0.001:  # 0.1% threshold
-            return False
-            
-        # Check if price is below 13 EMA
-        if close >= ema_13:
-            return False
-            
-        # Check if PSAR is above price
-        if psar <= close:
-            return False
-            
-        # Optional MACD confirmation
-        if macd_line is not None and signal_line is not None:
-            if macd_line >= signal_line:  # Not bearish
-                return False
-                
-        return True
-    
-    def check_exit(self,
-                  position_type: PositionType,
-                  close: float,
-                  psar: float) -> bool:
-        """
-        Check if position should be exited based on trailing stop
+        # Get latest values
+        current_close = data['close'].iloc[-1]
+        current_ema_fast = data['ema_fast'].iloc[-1]
+        current_ema_slow = data['ema_slow'].iloc[-1]
+        current_rsi = data['rsi'].iloc[-1]
         
-        Args:
-            position_type: Type of position ('long' or 'short')
-            close: Current closing price
-            psar: Current Parabolic SAR value
-            
-        Returns:
-            Boolean indicating if position should be exited
-        """
-        if position_type == 'long':
-            return close < psar
-        else:  # short position
-            return close > psar
+        # Determine market trend
+        market_trend = "BULLISH" if current_ema_fast > current_ema_slow else "BEARISH"
+        
+        # Generate signals
+        long_entry = (
+            market_trend == "BULLISH" and
+            current_rsi < 70 and
+            current_close > current_ema_fast
+        )
+        
+        short_entry = (
+            market_trend == "BEARISH" and
+            current_rsi > 30 and
+            current_close < current_ema_fast
+        )
+        
+        return {
+            "market_trend": market_trend,
+            "long_entry": long_entry,
+            "short_entry": short_entry,
+            "current_close": current_close,
+            "current_rsi": current_rsi,
+            "ema_fast": current_ema_fast,
+            "ema_slow": current_ema_slow,
+            "timestamp": data.index[-1]
+        }

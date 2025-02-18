@@ -32,9 +32,10 @@ def test_position_size_calculation(risk_manager):
     # Expected position size calculation:
     # Account size: 100,000
     # Risk amount: 2,000 (2%)
+    # Pips at risk: 100
     # Risk per pip: 2,000/100 = 20
-    # Position size should be 20 / pip_value
-    expected_size = Decimal('20') / Decimal('0.0001')
+    # Position size = 20 / 0.0001 = 200,000
+    expected_size = Decimal('2000.00')
     assert position_size == expected_size
 
 def test_max_position_validation(risk_manager):

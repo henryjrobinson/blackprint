@@ -1,131 +1,140 @@
-# Telegram Bot Commands Guide
+# Blackprint Trading Bot Commands
 
-## Basic Commands
+## Available Commands
 
-### /start
-Initiates interaction with the bot and provides basic setup instructions.
-```
-Usage: /start
-Response: Welcome message and setup guide
-```
+### Basic Commands
 
-### /watch
-Start monitoring a specific ticker.
-```
-Usage: /watch TICKER
-Example: /watch AAPL
-Response: Confirmation and initial market analysis
-```
+#### `/start`
+- Description: Initialize the bot and get started
+- Usage: `/start`
+- Response: Welcome message and basic setup instructions
 
-### /unwatch
-Stop monitoring a ticker.
-```
-Usage: /unwatch TICKER
-Example: /unwatch AAPL
-Response: Confirmation of removal
-```
+#### `/help`
+- Description: Display available commands and their usage
+- Usage: `/help`
+- Response: List of all commands with descriptions
 
-### /status
-View current watchlist and positions.
-```
-Usage: /status
-Response: List of watched tickers and positions
-```
+#### `/status`
+- Description: Check bot status and current positions
+- Usage: `/status`
+- Response: Current market phase, active positions, and account status
 
-## Trading Commands
+### Analysis Commands
 
-### /setkey
-Configure Alpaca API credentials (send in private message only).
-```
-Usage: /setkey YOUR_API_KEY YOUR_SECRET_KEY
-Response: Confirmation of API key storage
-```
+#### `/analyze <symbol>`
+- Description: Analyze a specific symbol using the Blackprint strategy
+- Usage: `/analyze AAPL` or `/analyze SPY`
+- Response: 
+  - Current market phase
+  - EMA relationships
+  - RSI value
+  - MACD status
+  - Trading signals (if any)
 
-### /buy
-Execute a buy order (requires API key setup).
-```
-Usage: /buy TICKER [QUANTITY] [TYPE]
-Examples:
-- /buy AAPL 100 shares
-- /buy AAPL 5 185c_30d
-Response: Order confirmation or error message
-```
+#### `/positions`
+- Description: View current positions and their status
+- Usage: `/positions`
+- Response:
+  - List of open positions
+  - Entry prices
+  - Current P&L
+  - Risk metrics
 
-### /sell
-Execute a sell order (requires API key setup).
-```
-Usage: /sell TICKER [QUANTITY] [TYPE]
-Examples:
-- /sell AAPL 100 shares
-- /sell AAPL 5 185c_30d
-Response: Order confirmation or error message
-```
+### Settings Commands
 
-## Information Commands
+#### `/settings`
+- Description: View and modify bot settings
+- Usage: `/settings`
+- Response: Current settings and options to modify them
 
-### /analysis
-Request detailed analysis for a ticker.
+Available settings:
+- Risk per trade
+- Maximum positions
+- Account size
+- Notification preferences
+
+## Command Examples
+
+### Analyzing a Stock
 ```
-Usage: /analysis TICKER
-Example: /analysis AAPL
-Response: Comprehensive market analysis
+User: /analyze AAPL
+Bot: 📊 Analysis for AAPL:
+Market Phase: BULLISH
+EMAs: Aligned (13 > 34 > 89)
+RSI: 58 (Neutral)
+MACD: Bullish Crossover
+Signal: LONG Entry Valid
+Risk: 2% ($2000)
 ```
 
-### /help
-Display command help.
+### Checking Positions
 ```
-Usage: /help
-Response: List of available commands and usage
+User: /positions
+Bot: 📈 Current Positions:
+1. AAPL (LONG)
+   Entry: $150.25
+   Current: $155.50
+   P&L: +3.5%
+   Risk: $300 (1.5%)
+
+Total Risk Exposure: 1.5%
+Available Positions: 4
 ```
 
-## Notification Format
+### Modifying Settings
+```
+User: /settings
+Bot: ⚙️ Current Settings:
+Risk Per Trade: 2%
+Max Positions: 5
+Account Size: $100,000
+Notifications: All
 
-### Market Updates
-```
-🔄 Market Update: [TICKER]
-📊 Market Phase: [Phase]
-➡️ EMAs:
-   - 13 EMA: $[Price]
-   - 34 EMA: $[Price]
-   - 89 EMA: $[Price]
-```
-
-### Entry Signals
-```
-✅ Entry Signal: [TICKER]
-📈 Type: [Long/Short]
-💰 Price: $[Price]
-🎯 Targets:
-   1. $[Price] (Risk:Reward 1:1)
-   2. $[Price] (Risk:Reward 1:2)
-⛔️ Stop Loss: $[Price]
+To modify, use:
+/settings risk <percentage>
+/settings positions <number>
+/settings account <amount>
 ```
 
-### Options Recommendations
+## Error Handling
+
+### Common Error Messages
+
+1. Invalid Symbol
 ```
-🔄 Options Play: [TICKER]
-📅 Expiry: [Date]
-⚡️ Strike: $[Strike]
-💰 Entry: $[Price]
-⛔️ Stop: $[Price]
+Error: Symbol 'INVALID' not found. Please check the symbol and try again.
 ```
 
-## Error Messages
-
-### API Errors
+2. Market Closed
 ```
-❌ Error: [Message]
-📝 Details: [Technical details]
+Error: Market is currently closed. Analysis based on last available data.
 ```
 
-### Validation Errors
+3. Rate Limit
 ```
-⚠️ Warning: [Message]
-💡 Correct usage: [Example]
+Error: Rate limit exceeded. Please wait 60 seconds before trying again.
 ```
 
-## Rate Limiting
+## Future Commands
 
-- Maximum 5 commands per minute per user
-- Watch list limited to 10 tickers per user
-- Trade commands require 5-second cooldown
+### Planned Additions
+
+1. `/backtest <symbol>`
+- Test strategy on historical data
+- Generate performance metrics
+- Show trade examples
+
+2. `/alerts <on/off>`
+- Configure automatic alerts
+- Set custom conditions
+- Manage notification preferences
+
+3. `/portfolio`
+- View portfolio analytics
+- Risk exposure analysis
+- Performance metrics
+
+4. `/trade <symbol> <direction>`
+- Execute trades directly
+- Set position size
+- Configure stop-loss

@@ -67,19 +67,16 @@ def test_short_entry_signal(signal_generator, sample_data):
     data = sample_data.copy()
     idx = 0
     
-    # Set EMAs for non-unordered phase
-    data.loc[idx, 'ema_13'] = 40
-    data.loc[idx, 'ema_34'] = 45
-    data.loc[idx, 'ema_89'] = 50
+    # Set EMAs for descending order (bearish trend)
+    data.loc[idx, 'ema_89'] = 50  # Highest
+    data.loc[idx, 'ema_34'] = 47  # Middle
+    data.loc[idx, 'ema_13'] = 45  # Lowest
     
-    # Price pulled back to 34 EMA
-    data.loc[idx, 'close'] = 45
-    
-    # Price below 13 EMA
-    data.loc[idx, 'ema_13'] = 46
+    # Price should be near 34 EMA (within 0.1%) and below 13 EMA
+    data.loc[idx, 'close'] = 44.95  # Below 13 EMA (45)
     
     # PSAR above price
-    data.loc[idx, 'psar'] = 47
+    data.loc[idx, 'psar'] = 48
     
     # MACD bearish
     data.loc[idx, 'macd_line'] = -0.5

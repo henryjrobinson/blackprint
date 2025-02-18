@@ -1,124 +1,121 @@
-# Blackprint Trading Bot - Architecture Overview
+# Blackprint Trading Bot Architecture
 
-## System Architecture
+## Overview
+Blackprint is a sophisticated trading bot that implements Al Pickett's Blackprint trading strategy. The bot provides market analysis, trading signals, and automated trade execution through a Telegram interface.
 
-### 1. Core Components
+## Core Components
 
-#### 1.1 Market Analysis
-- **Market Phase Detector**
-  - Analyzes EMA relationships
-  - Identifies market phases (Unordered, Emerging, Trending)
-  - Monitors phase transitions
+### 1. Bot Interface (`bot/`)
+- `telegram_bot.py`: Handles Telegram bot commands and user interactions
+- `trading_service.py`: Bridges strategy analysis with Telegram interface
+- `main.py`: Application entry point and configuration
 
-- **Technical Indicators**
-  - Multiple EMAs (5,7,9,11,13,34,89)
-  - Parabolic SAR
-  - MACD
-  - Real-time calculations
+### 2. Strategy Implementation (`strategy/`)
+- `signal_generator.py`: Implements trading signal generation logic
+- `indicators.py`: Technical analysis indicators using pandas-ta
+- Future: Position sizing and risk management
 
-- **Signal Generator**
-  - Entry/exit signal detection
-  - Pullback identification
-  - Trend confirmation
+### 3. Data Management
+- Market data fetching via yfinance
+- Future: Real-time data streaming via Alpaca API
+- Historical data caching and analysis
 
-#### 1.2 Risk Management
+### 4. Risk Management (`risk/`)
 - Position sizing calculations
-- Stop-loss management
-- Maximum position limits
-- Risk per trade validation
+- Risk per trade enforcement
+- Maximum positions limit
+- Account balance management
 
-### 2. Telegram Bot Integration
+## Technical Stack
 
-#### 2.1 Command System
-```
-/start          - Introduction and setup
-/watch <ticker> - Start monitoring a ticker
-/unwatch        - Stop monitoring
-/setkey         - Set Alpaca API key
-/trade          - Execute trades
-/status         - View current positions
-/help           - Command list
-```
-
-#### 2.2 Notification System
-- Market phase updates
-- Entry/exit signals
-- Options recommendations
-- Risk management advice
-
-### 3. Data Flow
-
-```mermaid
-graph TD
-    A[Market Data] -->|WebSocket| B[Data Processor]
-    B --> C[Indicator Calculator]
-    C --> D[Signal Generator]
-    D --> E[Alert Generator]
-    E --> F[Telegram Bot]
-    F --> G[User]
-    G --> H[Command Handler]
-    H --> I[Alpaca API]
-```
-
-### 4. Storage System
-
-#### 4.1 User Data
-- Telegram chat IDs
-- Watched tickers
-- Preferences
-- API keys (encrypted)
-
-#### 4.2 Market Data
-- Real-time price data
-- Indicator calculations
-- Signal history
-
-### 5. Security Measures
-
-#### 5.1 API Key Management
-- Encrypted storage
-- Secure transmission
-- Access control
-
-#### 5.2 Rate Limiting
-- API request limits
-- Command throttling
-- Error handling
-
-## Implementation Details
-
-### 1. Technology Stack
+### Core Technologies
 - Python 3.11+
-- python-telegram-bot
-- alpaca-trade-api
-- pandas/numpy
-- Docker
+- pandas-ta for technical analysis
+- python-telegram-bot for bot interface
+- yfinance for market data
+- Docker for containerization
 
-### 2. Dependencies
-```python
-# Core dependencies
-alpaca-trade-api>=3.0.0
-python-telegram-bot>=20.0
-pandas>=1.5.0
-numpy>=1.21.0
-ta>=0.10.0
+### Dependencies
+- alpaca-trade-api: Trading interface
+- pandas: Data manipulation
+- numpy: Numerical computations
+- pandas-ta: Technical analysis
+- python-telegram-bot: Bot framework
+- python-dotenv: Environment management
 
-# Development dependencies
-pytest>=7.0.0
-python-dotenv>=0.19.0
+## Development Environment
+
+### Docker Setup
+- `Dockerfile.dev`: Development environment configuration
+- `docker-compose.dev.yml`: Service orchestration
+- Development tools (pytest, black, flake8)
+
+### Configuration
+Required environment variables:
+```
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+ALPACA_API_KEY=your_alpaca_api_key
+ALPACA_API_SECRET=your_alpaca_api_secret
+RISK_PER_TRADE=0.02
+MAX_POSITIONS=5
+DEFAULT_ACCOUNT_SIZE=100000
 ```
 
-### 3. Configuration
-```python
-# Environment variables
-TELEGRAM_BOT_TOKEN=
-ALPACA_API_KEY=
-ALPACA_SECRET_KEY=
-ALPACA_BASE_URL=
+## Deployment
+
+### Container Structure
+```
+/app/
+├── bot/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── telegram_bot.py
+│   └── trading_service.py
+├── strategy/
+│   ├── __init__.py
+│   ├── signal_generator.py
+│   └── indicators.py
+├── risk/
+│   ├── __init__.py
+│   └── management.py
+└── tests/
+    └── ...
 ```
 
-### 4. Deployment
-- Docker container
-- Volume mounts for persistence
-- Health monitoring
-- Automatic restarts
+### Deployment Process
+1. Build Docker image
+2. Configure environment variables
+3. Deploy container
+4. Monitor logs and performance
+
+## Next Steps
+
+### 1. Alpaca API Integration
+- Implement real-time market data streaming
+- Add order execution functionality
+- Develop position tracking system
+- Implement account management
+
+### 2. Enhanced Risk Management
+- Implement dynamic position sizing
+- Add portfolio risk controls
+- Develop drawdown protection
+- Create risk reporting system
+
+### 3. Strategy Refinements
+- Implement advanced entry/exit rules
+- Add market regime detection
+- Develop multi-timeframe analysis
+- Create performance analytics
+
+### 4. System Improvements
+- Add comprehensive logging
+- Implement error handling
+- Create monitoring dashboard
+- Develop backup systems
+
+### 5. Testing and Validation
+- Expand unit test coverage
+- Add integration tests
+- Implement strategy backtesting
+- Create performance benchmarks

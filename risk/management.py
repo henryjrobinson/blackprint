@@ -59,8 +59,11 @@ class RiskManager:
         price_distance = abs(entry_price - stop_loss_price)
         pips_at_risk = price_distance / pip_value
         
-        # Position size = Risk amount / (Pips at risk * Pip value)
-        position_size = risk_amount / (pips_at_risk * pip_value)
+        # Calculate risk per pip
+        risk_per_pip = risk_amount / pips_at_risk
+        
+        # Position size = Risk per pip / Pip value
+        position_size = risk_per_pip / pip_value
         
         return position_size.quantize(Decimal('0.01'))
     
@@ -87,5 +90,9 @@ class RiskManager:
         Returns:
             Boolean indicating if trade risk is acceptable
         """
+        # Convert inputs to Decimal if they aren't already
+        risk_amount = Decimal(str(risk_amount)) if not isinstance(risk_amount, Decimal) else risk_amount
+        account_size = Decimal(str(account_size)) if not isinstance(account_size, Decimal) else account_size
+        
         risk_percentage = risk_amount / account_size
         return risk_percentage <= self.risk_per_trade
