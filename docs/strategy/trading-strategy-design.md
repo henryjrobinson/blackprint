@@ -178,3 +178,233 @@ strategy("The Blackprint Strategy", overlay=true)
 2. Testing
 3. Monitoring setup
 4. Production deployment
+
+# Blackprint Trading Strategy Design
+
+## Overview
+The Blackprint trading strategy is based on Al Pickett's methodology, combining technical analysis with risk management to identify and execute high-probability trades.
+
+## Core Components
+
+### 1. Technical Analysis
+```python
+# Key indicators used in strategy/indicators.py
+- RSI (Relative Strength Index)
+- Moving Averages (EMA, SMA)
+- Volume Analysis
+- Price Action Patterns
+```
+
+### 2. Entry Conditions
+1. Primary Trend Alignment
+   - Identify trend using multiple timeframes
+   - Confirm trend strength with volume
+   - Validate momentum indicators
+
+2. Entry Triggers
+   - Price action confirmation
+   - Volume confirmation
+   - Indicator convergence
+
+### 3. Risk Management
+```python
+# Implementation in strategy/risk_manager.py
+- Position Sizing: 2% risk per trade
+- Maximum Positions: 5 concurrent trades
+- Stop Loss: Technical or % based
+- Take Profit: R-multiple based
+```
+
+### 4. Position Management
+1. Entry Management
+   - Partial position entries
+   - Scaling in opportunities
+   - Entry price optimization
+
+2. Exit Management
+   - Trailing stops
+   - Partial profit taking
+   - Break-even adjustments
+
+## Strategy Parameters
+
+### 1. Time Frames
+- Primary: 1 Hour
+- Secondary: 4 Hour
+- Trend: Daily
+
+### 2. Technical Parameters
+```python
+# Default values in config/strategy.py
+RSI_PERIOD = 14
+RSI_OVERBOUGHT = 70
+RSI_OVERSOLD = 30
+EMA_FAST = 12
+EMA_SLOW = 26
+VOLUME_MA = 20
+```
+
+### 3. Risk Parameters
+```python
+# Default values in config/risk.py
+RISK_PER_TRADE = 0.02  # 2%
+MAX_POSITIONS = 5
+STOP_LOSS_ATR = 2
+TAKE_PROFIT_RR = 2  # Risk:Reward ratio
+```
+
+## Signal Generation
+
+### 1. Entry Signals
+```python
+class SignalGenerator:
+    def generate_entry_signal(self, data):
+        # 1. Trend Analysis
+        trend = self.analyze_trend(data)
+        
+        # 2. Volume Confirmation
+        volume_valid = self.check_volume(data)
+        
+        # 3. Technical Confirmation
+        technicals_valid = self.check_technicals(data)
+        
+        # 4. Generate Signal
+        if all([trend, volume_valid, technicals_valid]):
+            return self.create_signal('ENTRY')
+```
+
+### 2. Exit Signals
+```python
+class SignalGenerator:
+    def generate_exit_signal(self, position):
+        # 1. Stop Loss Check
+        if self.check_stop_loss(position):
+            return self.create_signal('EXIT')
+        
+        # 2. Take Profit Check
+        if self.check_take_profit(position):
+            return self.create_signal('EXIT')
+        
+        # 3. Technical Exit
+        if self.check_technical_exit(position):
+            return self.create_signal('EXIT')
+```
+
+## Backtesting Framework
+
+### 1. Data Requirements
+- Historical price data (OHLCV)
+- Volume data
+- Market condition data
+
+### 2. Performance Metrics
+```python
+# Implementation in analysis/performance.py
+- Sharpe Ratio
+- Maximum Drawdown
+- Win Rate
+- Average R-Multiple
+- Profit Factor
+```
+
+### 3. Optimization Parameters
+- Entry timing
+- Position sizing
+- Stop loss placement
+- Take profit levels
+
+## Real-Time Execution
+
+### 1. Market Data Processing
+```python
+class MarketDataProcessor:
+    def process_data(self, data):
+        # 1. Clean Data
+        cleaned_data = self.clean_data(data)
+        
+        # 2. Calculate Indicators
+        indicators = self.calculate_indicators(cleaned_data)
+        
+        # 3. Generate Signals
+        signals = self.generate_signals(indicators)
+        
+        return signals
+```
+
+### 2. Order Execution
+```python
+class OrderExecutor:
+    def execute_signal(self, signal):
+        # 1. Validate Signal
+        if not self.validate_signal(signal):
+            return
+        
+        # 2. Calculate Position Size
+        size = self.calculate_position_size(signal)
+        
+        # 3. Submit Order
+        order = self.submit_order(signal, size)
+        
+        # 4. Track Order
+        self.track_order(order)
+```
+
+## Risk Controls
+
+### 1. Pre-Trade Checks
+- Account balance verification
+- Position limit check
+- Risk per trade validation
+- Market condition assessment
+
+### 2. Post-Trade Monitoring
+- Position tracking
+- P&L monitoring
+- Stop loss verification
+- Technical indicator monitoring
+
+### 3. System Safeguards
+- Circuit breakers
+- Error handling
+- Connection monitoring
+- Data validation
+
+## Performance Analysis
+
+### 1. Trade Metrics
+- Win/Loss ratio
+- Average trade duration
+- Risk/Reward achieved
+- Maximum adverse excursion
+
+### 2. Portfolio Metrics
+- Overall return
+- Risk-adjusted return
+- Drawdown analysis
+- Correlation analysis
+
+### 3. Strategy Metrics
+- Signal quality
+- Entry/exit efficiency
+- Technical indicator effectiveness
+- Market condition performance
+
+## Implementation Roadmap
+
+### Phase 1: Core Strategy
+1. Basic indicator calculation
+2. Signal generation
+3. Risk management
+4. Order execution
+
+### Phase 2: Enhancement
+1. Advanced position management
+2. Dynamic parameter adjustment
+3. Market condition analysis
+4. Performance optimization
+
+### Phase 3: Refinement
+1. Machine learning integration
+2. Alternative data sources
+3. Advanced risk models
+4. Portfolio optimization

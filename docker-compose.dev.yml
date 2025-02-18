@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: blackprint-dev
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_API_SECRET=${ALPACA_API_SECRET}
+      - RISK_PER_TRADE=${RISK_PER_TRADE:-0.02}
+      - MAX_POSITIONS=${MAX_POSITIONS:-5}
+      - DEFAULT_ACCOUNT_SIZE=${DEFAULT_ACCOUNT_SIZE:-100000}
+    command: python -m bot.main
+    stdin_open: true
+    tty: true
+
+volumes:
+  pip_cache:
