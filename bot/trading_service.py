@@ -1,8 +1,8 @@
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
-from strategy.signal_generator import SignalGenerator
-from strategy.market_phase import MarketPhaseDetector
+import yfinance as yf
+from .market_phases import MarketPhaseDetector, PhaseDetectionConfig, MarketPhase, MarketIndex
 from strategy.indicators import calculate_emas, calculate_psar, calculate_macd
 from risk.management import RiskManager
 
@@ -11,13 +11,43 @@ class TradingService:
     Service to handle trading operations and strategy execution
     """
     
-    def __init__(self, account_size: float = 100000, risk_per_trade: float = 0.02):
-        self.signal_generator = SignalGenerator()
-        self.phase_detector = MarketPhaseDetector()
+    def __init__(self, account_size: float = 100000, risk_per_trade: float = 0.02, candle_size: str = "15Min"):
+        self.phase_detector = MarketPhaseDetector(
+            config=PhaseDetectionConfig(candle_size=candle_size)
+        )
         self.risk_manager = RiskManager(
             account_size=account_size,
             risk_per_trade=risk_per_trade
         )
+        self.candle_size = candle_size
+        
+    def set_candle_size(self, candle_size: str):
+        """Update the candle size configuration"""
+        self.candle_size = candle_size
+        self.phase_detector = MarketPhaseDetector(
+            config=PhaseDetectionConfig(candle_size=candle_size)
+        )
+        
+    def set_index(self, index: MarketIndex):
+        """Update the reference index"""
+        self.phase_detector.set_index(index)
+        
+    def get_current_index(self) -> MarketIndex:
+        """Get the current reference index"""
+        return self.phase_detector.config.index
+        
+    def _fetch_index_data(self):
+        """Fetch current index data"""
+        try:
+            index_symbol = self.phase_detector.get_index_symbol()
+            index = yf.Ticker(index_symbol)
+            data = index.history(period="1mo", interval=self.candle_size)
+            if not data.empty:
+                self.phase_detector.update_index_data(data)
+            return data
+        except Exception as e:
+            print(f"Error fetching index data: {str(e)}")
+            return None
         
     def analyze_symbol(self, symbol: str, data: pd.DataFrame) -> Dict:
         """
@@ -30,51 +60,33 @@ class TradingService:
         Returns:
             Dictionary containing analysis results
         """
-        # Calculate indicators
-        emas = calculate_emas(data['close'])
+        # Fetch and update index data
+        index_data = self._fetch_index_data()
+        
+        # Detect market phase
+        phase, phase_metrics = self.phase_detector.detect_phase(data)
+        
+        # Calculate additional indicators
         psar = calculate_psar(data['high'], data['low'])
         macd, signal = calculate_macd(data['close'])
         
         # Get latest values
         current_close = data['close'].iloc[-1]
-        current_emas = {k: v.iloc[-1] for k, v in emas.items()}
         current_psar = psar.iloc[-1]
         current_macd = macd.iloc[-1]
         current_signal = signal.iloc[-1]
         
-        # Check market phase
-        phase = self.phase_detector.detect_phase(
-            ema_13=current_emas['ema_13'],
-            ema_34=current_emas['ema_34'],
-            ema_89=current_emas['ema_89']
-        )
+        # Determine if conditions are suitable for trading
+        can_trade = phase in [MarketPhase.TRENDING, MarketPhase.EMERGING]
+        is_pullback = phase == MarketPhase.PULLBACK
         
-        # Check for signals
-        long_signal = self.signal_generator.check_long_entry(
-            close=current_close,
-            ema_5=current_emas['ema_5'],
-            ema_13=current_emas['ema_13'],
-            ema_34=current_emas['ema_34'],
-            ema_89=current_emas['ema_89'],
-            psar=current_psar,
-            macd_line=current_macd,
-            signal_line=current_signal
-        )
-        
-        short_signal = self.signal_generator.check_short_entry(
-            close=current_close,
-            ema_13=current_emas['ema_13'],
-            ema_34=current_emas['ema_34'],
-            ema_89=current_emas['ema_89'],
-            psar=current_psar,
-            macd_line=current_macd,
-            signal_line=current_signal
-        )
-        
-        # Calculate potential trade parameters if there's a signal
+        # Calculate potential trade parameters if conditions are suitable
         trade_params = None
-        if long_signal or short_signal:
-            direction = "LONG" if long_signal else "SHORT"
+        if can_trade or is_pullback:
+            # For pullbacks, we want to enter in the direction of the trend
+            direction = "LONG" if data[f'ema_{self.phase_detector.config.fast_ema}'].iloc[-1] > \
+                                 data[f'ema_{self.phase_detector.config.slow_ema}'].iloc[-1] else "SHORT"
+            
             stop_loss = self._calculate_stop_loss(
                 direction=direction,
                 current_price=current_close,
@@ -98,40 +110,35 @@ class TradingService:
             "symbol": symbol,
             "timestamp": data.index[-1],
             "current_price": current_close,
+            "market_phase": {
+                "phase": phase.value,
+                "metrics": phase_metrics
+            },
             "indicators": {
-                "ema_5": current_emas['ema_5'],
-                "ema_13": current_emas['ema_13'],
-                "ema_34": current_emas['ema_34'],
-                "ema_89": current_emas['ema_89'],
-                "psar": current_psar,
-                "macd": current_macd,
-                "macd_signal": current_signal
+                "psar": float(current_psar),
+                "macd": {
+                    "line": float(current_macd),
+                    "signal": float(current_signal)
+                }
             },
-            "market_phase": phase,
-            "signals": {
-                "long": long_signal,
-                "short": short_signal
-            },
-            "trade_parameters": trade_params
+            "trade_opportunity": trade_params,
+            "candle_size": self.candle_size,
+            "reference_index": self.phase_detector.config.index.name
         }
-    
-    def _calculate_stop_loss(self, direction: str, current_price: float, psar: float) -> float:
-        """Calculate stop loss price based on PSAR"""
-        buffer = current_price * 0.001  # 0.1% buffer
         
+    def _calculate_stop_loss(self, direction: str, current_price: float, psar: float) -> float:
+        """Calculate stop loss level based on direction and PSAR"""
         if direction == "LONG":
-            return min(psar, current_price - buffer)
-        else:  # SHORT
-            return max(psar, current_price + buffer)
-    
+            return min(psar, current_price * 0.99)  # 1% below entry for long
+        else:
+            return max(psar, current_price * 1.01)  # 1% above entry for short
+
     def format_analysis_message(self, analysis: Dict) -> str:
         """Format analysis results as a Telegram message"""
         # Determine signal emoji
         signal_emoji = "🔍"
-        if analysis['signals']['long']:
-            signal_emoji = "🟢"
-        elif analysis['signals']['short']:
-            signal_emoji = "🔴"
+        if analysis['trade_opportunity']:
+            signal_emoji = "🟢" if analysis['trade_opportunity']['direction'] == "LONG" else "🔴"
         
         # Format indicators with arrows
         def get_arrow(current: float, prev: float) -> str:
@@ -142,17 +149,14 @@ class TradingService:
             f"{signal_emoji} *Analysis for {analysis['symbol']}*\n\n"
             f"💰 Price: ${analysis['current_price']:.2f}\n\n"
             f"📊 *Technical Indicators:*\n"
-            f"- EMA (13): ${analysis['indicators']['ema_13']:.2f}\n"
-            f"- EMA (34): ${analysis['indicators']['ema_34']:.2f}\n"
-            f"- EMA (89): ${analysis['indicators']['ema_89']:.2f}\n"
             f"- PSAR: ${analysis['indicators']['psar']:.2f}\n"
-            f"- MACD: {'Bullish 📈' if analysis['indicators']['macd'] > analysis['indicators']['macd_signal'] else 'Bearish 📉'}\n\n"
-            f"📈 *Market Phase:* {analysis['market_phase']}\n"
+            f"- MACD: {'Bullish 📈' if analysis['indicators']['macd']['line'] > analysis['indicators']['macd']['signal'] else 'Bearish 📉'}\n\n"
+            f"📈 *Market Phase:* {analysis['market_phase']['phase']}\n"
         )
         
         # Add trade parameters if there's a signal
-        if analysis['trade_parameters']:
-            trade = analysis['trade_parameters']
+        if analysis['trade_opportunity']:
+            trade = analysis['trade_opportunity']
             message += (
                 f"\n💡 *Trading Signal:*\n"
                 f"Direction: {trade['direction']}\n"
