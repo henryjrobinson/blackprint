@@ -1,107 +1,104 @@
 # Blackprint Trading Bot
 
-A Telegram-based trading bot implementing Al Pickett's Blackprint trading strategy using the Alpaca API.
+A sophisticated market phase detection and analysis bot that operates through Telegram, providing real-time market insights and automated trading signals.
 
-## Overview
-
-The Blackprint Trading Bot provides automated market analysis and trading signals based on the Blackprint trading strategy. It monitors market conditions, identifies trading opportunities, and delivers clear, actionable insights via Telegram.
-
-### Key Features
+## Features
 
 - Real-time market phase detection
-- Technical indicator calculations (EMAs, PSAR, MACD)
-- Options analysis and recommendations
-- Telegram bot interface
-- Optional automated trading via Alpaca API
-- Docker containerization for easy deployment
+- Interactive Telegram bot interface
+- Multiple timeframe analysis
+- Support for various market indices
+- Customizable symbol tracking
+- Automated notifications for phase changes
 
-## Quick Start
+## Setup
 
-1. **Prerequisites**
-   - Python 3.11+
-   - Docker (optional)
-   - Telegram Bot Token
-   - Alpaca API credentials (optional)
+1. Clone the repository:
+```bash
+git clone https://github.com/henryjrobinson/blackprint.git
+cd blackprint
+```
 
-2. **Installation**
-   ```bash
-   # Clone the repository
-   git clone https://github.com/yourusername/blackprint.git
-   cd blackprint
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-   # Create virtual environment
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+3. Configure environment variables:
+```bash
+cp env.example .env
+```
+Edit `.env` with your:
+- Telegram Bot Token
+- Alpaca API Key and Secret
+- Other configuration parameters
 
-   # Install dependencies
-   pip install -r requirements.txt
-   ```
+## Project Structure
 
-3. **Configuration**
-   ```bash
-   # Create .env file
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
+```
+blackprint/
+├── bot/                    # Bot implementation
+│   ├── __init__.py
+│   ├── telegram_bot.py     # Main bot logic
+│   ├── market_phases.py    # Market phase detection
+│   └── main.py            # Entry point
+├── tests/                  # Test suite
+│   ├── conftest.py        # Test configuration
+│   ├── test_telegram_bot.py
+│   └── test_market_phases.py
+├── requirements.txt        # Project dependencies
+├── .env.example           # Environment template
+└── README.md
+```
 
-4. **Running the Bot**
-   ```bash
-   # Direct execution
-   python main.py
+## Testing
 
-   # Or using Docker
-   docker-compose up -d
-   ```
+The project uses pytest for testing with async support. Run tests with:
 
-## Documentation
+```bash
+pytest -v
+```
 
-- [Strategy Documentation](docs/strategy/)
-  - [Trading Strategy Design](docs/strategy/trading-strategy-design.md)
-  - [Alpaca Implementation Guide](docs/strategy/alpaca-implementation-guide.md)
+### Test Coverage
 
-- [Technical Documentation](docs/technical/)
-  - [Architecture Overview](docs/technical/architecture.md)
-  - [Bot Commands](docs/technical/bot-commands.md)
-  - [Development Guide](docs/technical/development-guide.md)
-
-- [Deployment Guide](docs/deployment/)
-  - [Docker Setup](docs/deployment/docker-setup.md)
-  - [Environment Configuration](docs/deployment/environment-config.md)
+- Unit tests for all bot components
+- Integration tests for market phase detection
+- Comprehensive button and command testing
+- Mock implementations for external APIs
 
 ## Development
 
-### Project Structure
-```
-blackprint/
-├── config/             # Configuration files
-├── data/              # Market data handling
-├── strategy/          # Trading strategy implementation
-├── risk/              # Risk management
-├── utils/             # Utility functions
-├── tests/             # Test suite
-└── docs/              # Documentation
-```
+1. **Environment Setup**
+   - Python 3.10+
+   - Virtual environment recommended
+   - Required packages in requirements.txt
 
-### Testing
-```bash
-# Run tests
-pytest
-```
+2. **Running Tests**
+   ```bash
+   pytest tests/ -v
+   ```
+
+3. **Running the Bot**
+   ```bash
+   python -m bot.main
+   ```
+
+## Bot Commands
+
+- `/start` - Initialize bot and show main keyboard
+- `/analyze [symbol]` - Analyze market phase for a symbol
+- `/historical [symbol]` - View historical phase changes
+- `/setcandle [timeframe]` - Change analysis timeframe
+- `/setindex [index]` - Change reference market index
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Al Pickett for the Blackprint trading strategy
-- Alpaca for their trading API
-- Python-Telegram-Bot team for their excellent library
+MIT License - see LICENSE file for details
