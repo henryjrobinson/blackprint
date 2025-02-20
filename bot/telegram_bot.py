@@ -16,6 +16,7 @@ import pandas as pd
 from .market_phases import MarketIndex, PhaseDetectionConfig
 from .market_state import MarketStateManager
 from .data_manager import AlpacaDataManager
+import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +32,7 @@ class BlackprintBot:
     
     def __init__(self, token: str):
         """Initialize the bot with Alpaca integration"""
+        self.token = token
         self.application = Application.builder().token(token).build()
         
         # Initialize managers
@@ -70,6 +72,40 @@ class BlackprintBot:
         
         # Error handler
         self.application.add_error_handler(self.error_handler)
+    
+    async def start_streaming(self):
+        """Start the data streaming"""
+        try:
+            await self.data_manager.start_streaming()
+            logger.info("Started data streaming")
+        except Exception as e:
+            logger.error(f"Error starting data streaming: {e}")
+    
+    async def run(self):
+        """Start the bot and begin streaming market data"""
+        try:
+            # Start the bot
+            await self.application.initialize()
+            await self.application.start()
+            
+            # Start streaming market data in the background
+            asyncio.create_task(self.start_streaming())
+            
+            # Start polling for updates
+            await self.application.updater.start_polling()
+            
+            # Keep the application running
+            while True:
+                await asyncio.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"Error running bot: {str(e)}", exc_info=True)
+            raise
+        finally:
+            # Cleanup
+            await self.application.updater.stop()
+            await self.application.stop()
+            await self.application.shutdown()
     
     def get_main_keyboard(self) -> ReplyKeyboardMarkup:
         """Create the main keyboard with common commands"""
@@ -142,9 +178,7 @@ class BlackprintBot:
             await self.set_candle_command(update, context)
             
         elif data.startswith("index_"):
-            index = data.split("_")[1]
-            context.args = [index]
-            await self.set_index_command(update, context)
+            await self.handle_index_callback(update, context)
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send welcome message when the command /start is issued"""
@@ -172,7 +206,7 @@ class BlackprintBot:
             "📊 Quick Analysis - Select a symbol:",
             reply_markup=self.get_symbol_keyboard()
         )
-    
+        
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send detailed help"""
         help_text = (
@@ -353,6 +387,31 @@ class BlackprintBot:
                 logger.error(f"Error sending notification to user {user_id}: {e}")
                 self.subscribed_users.discard(user_id)  # Remove user if we can't send messages
 
-    def run(self):
-        """Run the bot"""
-        self.application.run_polling()
+    async def handle_index_callback(self, update: Update, context: CallbackContext) -> None:
+        """Handle index selection callback"""
+        query = update.callback_query
+        await query.answer()  # Acknowledge the button click
+        
+        try:
+            # Extract the selected index from callback data
+            selected_index = query.data.replace('index_', '')
+            
+            # Send a new message with the selection
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=f"You selected {selected_index}. Fetching market data..."
+            )
+            
+            # Update the original message to show selection
+            await query.edit_message_text(
+                text=f"Selected index: {selected_index}"
+            )
+            
+            # TODO: Fetch and display market data for the selected index
+            
+        except Exception as e:
+            logger.error(f"Error handling index callback: {e}", exc_info=True)
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Sorry, there was an error processing your selection. Please try again."
+            )
