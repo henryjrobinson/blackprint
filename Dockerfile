@@ -22,4 +22,4 @@ RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Command to run the bot
-CMD ["python", "main.py"]
+CMD ["python", "-m", "bot.main"]
