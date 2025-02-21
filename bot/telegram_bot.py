@@ -88,8 +88,8 @@ class BlackprintBot:
             await self.application.initialize()
             await self.application.start()
             
-            # Start streaming market data in the background
-            asyncio.create_task(self.start_streaming())
+            # Start streaming market data
+            await self.start_streaming()
             
             # Start polling for updates
             await self.application.updater.start_polling()
@@ -99,7 +99,7 @@ class BlackprintBot:
                 await asyncio.sleep(1)
                 
         except Exception as e:
-            logger.error(f"Error running bot: {str(e)}", exc_info=True)
+            logger.error(f"Error running bot: {e}")
             raise
         finally:
             # Cleanup
