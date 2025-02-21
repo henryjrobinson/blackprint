@@ -90,18 +90,20 @@ class AlpacaDataManager:
             logger.error(f"Error handling bar data: {e}")
     
     async def start_streaming(self):
-        """Start streaming real-time market data"""
+        """Start the streaming connection"""
         try:
-            logger.info("Starting market data streaming...")
+            # Connect to the streaming client
+            await self.stream_client.connect()
             
-            # Subscribe to the stream
-            self.stream_client.subscribe_bars(self._handle_bar, "SPY")
+            # Subscribe to any existing symbols
+            if self.subscribed_symbols:
+                await self.subscribe_to_bars(list(self.subscribed_symbols))
             
-            # Start the connection
-            await self.stream_client.run()
+            # Start processing messages
+            await self.stream_client._run_forever()
             
         except Exception as e:
-            logger.error(f"Error connecting to streaming API: {e}")
+            logger.error(f"Error starting streaming: {e}")
             raise
     
     async def stop_streaming(self):
