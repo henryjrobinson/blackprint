@@ -1,140 +1,120 @@
 # Blackprint Trading Bot Commands
 
-## Available Commands
-
-### Basic Commands
-
-#### `/start`
-- Description: Initialize the bot and get started
-- Usage: `/start`
-- Response: Welcome message and basic setup instructions
-
-#### `/help`
-- Description: Display available commands and their usage
-- Usage: `/help`
-- Response: List of all commands with descriptions
-
-#### `/status`
-- Description: Check bot status and current positions
-- Usage: `/status`
-- Response: Current market phase, active positions, and account status
+## Core Commands
 
 ### Analysis Commands
 
-#### `/analyze <symbol>`
-- Description: Analyze a specific symbol using the Blackprint strategy
-- Usage: `/analyze AAPL` or `/analyze SPY`
-- Response: 
-  - Current market phase
-  - EMA relationships
-  - RSI value
-  - MACD status
-  - Trading signals (if any)
+- `/analyze SYMBOL` - Analyze current market phase for any symbol
+  - Example: `/analyze AAPL`
+  - Also supports direct symbol input (just type "AAPL")
+  - Shows current phase, EMAs, and momentum indicators
+  - Displays current candle length in output
 
-#### `/positions`
-- Description: View current positions and their status
-- Usage: `/positions`
-- Response:
-  - List of open positions
-  - Entry prices
-  - Current P&L
-  - Risk metrics
+- `/historical SYMBOL` - Show historical phase distribution
+  - Example: `/historical MSFT`
+  - Shows phase distribution over last 10 periods
+  - Visual representation of phase percentages
+  - Includes current momentum and price
 
-### Settings Commands
+### Configuration Commands
 
-#### `/settings`
-- Description: View and modify bot settings
-- Usage: `/settings`
-- Response: Current settings and options to modify them
+- `/candle NUMBER` - Set candle length in minutes
+  - Example: `/candle 5` for 5-minute candles
+  - Provides confirmation message
+  - Affects all subsequent analysis
 
-Available settings:
-- Risk per trade
-- Maximum positions
-- Account size
-- Notification preferences
+- `/setindex INDEX` - Set reference index for market phase detection
+  - Supported indices: US30, SPX, NDX, RUT, VIX, FTSE, DAX, NIKKEI
+  - Example: `/setindex SPX`
 
-## Command Examples
+### Streaming Commands
 
-### Analyzing a Stock
-```
-User: /analyze AAPL
-Bot: 📊 Analysis for AAPL:
-Market Phase: BULLISH
-EMAs: Aligned (13 > 34 > 89)
-RSI: 58 (Neutral)
-MACD: Bullish Crossover
-Signal: LONG Entry Valid
-Risk: 2% ($2000)
-```
+- `/subscribe SYMBOL` - Subscribe to real-time updates
+  - Example: `/subscribe AAPL`
+  - Receive notifications on phase changes
+  - Includes price and momentum updates
 
-### Checking Positions
-```
-User: /positions
-Bot: 📈 Current Positions:
-1. AAPL (LONG)
-   Entry: $150.25
-   Current: $155.50
-   P&L: +3.5%
-   Risk: $300 (1.5%)
+- `/unsubscribe SYMBOL` - Unsubscribe from updates
+  - Example: `/unsubscribe AAPL`
+  - Stops real-time notifications
 
-Total Risk Exposure: 1.5%
-Available Positions: 4
-```
+### System Commands
 
-### Modifying Settings
-```
-User: /settings
-Bot: ⚙️ Current Settings:
-Risk Per Trade: 2%
-Max Positions: 5
-Account Size: $100,000
-Notifications: All
+- `/start` - Initialize the bot
+  - Displays welcome message
+  - Shows available commands
+  - Sets up user session
 
-To modify, use:
-/settings risk <percentage>
-/settings positions <number>
-/settings account <amount>
-```
+- `/help` - Display command help
+  - Lists all available commands
+  - Shows usage examples
+  - Provides quick start guide
 
-## Error Handling
+## Usage Tips
 
-### Common Error Messages
+1. Direct Symbol Analysis
+   - Type any symbol directly to analyze it
+   - No need for /analyze command
+   - Example: Just type "AAPL" or "MSFT"
 
-1. Invalid Symbol
-```
-Error: Symbol 'INVALID' not found. Please check the symbol and try again.
-```
+2. Candle Length
+   - Default is 15 minutes
+   - Can be changed with `/candle` command
+   - Current length shown in all analysis
 
-2. Market Closed
-```
-Error: Market is currently closed. Analysis based on last available data.
-```
+3. Error Handling
+   - Invalid symbols: Clear error message
+   - No data: Suggests checking symbol
+   - Connection issues: Automatic retry
 
-3. Rate Limit
-```
-Error: Rate limit exceeded. Please wait 60 seconds before trying again.
-```
+4. Real-time Updates
+   - Phase changes
+   - Significant price movements
+   - Momentum shifts
 
-## Future Commands
+## Response Format
 
-### Planned Additions
+Analysis responses include:
+- Market Phase (TRENDING, EMERGING, PULLBACK, UNORDERED)
+- Current Price
+- EMA Values and Slopes
+- Momentum Indicators
+- Candle Length Used
 
-1. `/backtest <symbol>`
-- Test strategy on historical data
-- Generate performance metrics
-- Show trade examples
+Historical analysis includes:
+- Phase Distribution Chart
+- Recent Phase Changes
+- Current Phase and Price
+- Momentum Information
 
-2. `/alerts <on/off>`
-- Configure automatic alerts
-- Set custom conditions
-- Manage notification preferences
+## Examples
 
-3. `/portfolio`
-- View portfolio analytics
-- Risk exposure analysis
-- Performance metrics
+1. Basic Analysis:
+   ```
+   /analyze AAPL
+   
+   Analysis for AAPL (15min candles):
+   🏷 Market Phase: TRENDING
+   📈 Current Price: $182.50
+   📊 EMAs:
+     • Fast: $181.20 (+0.0023)
+     • Medium: $180.80 (+0.0015)
+     • Slow: $180.10 (+0.0008)
+   💫 Momentum: +0.0045
+   ```
 
-4. `/trade <symbol> <direction>`
-- Execute trades directly
-- Set position size
-- Configure stop-loss
+2. Historical Analysis:
+   ```
+   /historical MSFT
+   
+   Historical Analysis for MSFT (15min candles):
+   🏷 Current Phase: EMERGING
+   📈 Current Price: $402.75
+   
+   📊 Recent Phase Distribution:
+     • TRENDING: ▓▓▓▓▓░░░░░ 50.0%
+     • EMERGING: ▓▓░░░░░░░░ 20.0%
+     • PULLBACK: ▓▓▓░░░░░░░ 30.0%
+   
+   💫 Current Momentum: +0.0067
+   ```

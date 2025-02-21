@@ -267,191 +267,259 @@ def handle_data_error(error):
 
 Would you like to begin with implementing any specific component?
 
-# Alpaca API Integration Guide
+# Alpaca API Implementation Guide
 
 ## Overview
-This guide outlines the implementation of Alpaca API integration for the Blackprint Trading Bot, enabling real-time market data streaming and automated trade execution.
 
-## Components
+The Blackprint Trading Bot uses Alpaca's API for real-time market data and historical price information. This guide covers the implementation details and best practices.
 
-### 1. Market Data Streaming
+## API Integration
+
+### Data Manager Class
+
 ```python
-# Implementation in strategy/market_data.py
-class AlpacaDataStream:
+class AlpacaDataManager:
     def __init__(self):
-        self.api = tradeapi.REST()
-        self.data_stream = Stream()
-    
-    async def subscribe(self, symbols):
-        # Subscribe to minute bars and trades
-        self.data_stream.subscribe_bars(self.process_bar, symbols)
-        self.data_stream.subscribe_trades(self.process_trade, symbols)
+        self.api_key = os.getenv('ALPACA_API_KEY')
+        self.api_secret = os.getenv('ALPACA_API_SECRET')
+        
+        # Initialize clients
+        self.hist_client = StockHistoricalDataClient(self.api_key, self.api_secret)
+        self.stream_client = StockDataStream(self.api_key, self.api_secret)
+        
+        # Cache and state management
+        self._latest_bars = {}
+        self._callbacks = []
+        self.subscribed_symbols = set()
 ```
 
-### 2. Order Management
+### Timeframe Management
+
 ```python
-# Implementation in strategy/order_manager.py
-class OrderManager:
-    def __init__(self):
-        self.api = tradeapi.REST()
-    
-    async def place_order(self, symbol, qty, side, type='market'):
-        return await self.api.submit_order(
-            symbol=symbol,
-            qty=qty,
-            side=side,
-            type=type,
-            time_in_force='gtc'
+self.timeframe_map = {
+    "1Min": TimeFrame.Minute,
+    "5Min": TimeFrame(5, TimeFrame.Minute),
+    "15Min": TimeFrame(15, TimeFrame.Minute),
+    "30Min": TimeFrame(30, TimeFrame.Minute),
+    "1H": TimeFrame.Hour,
+    "4H": TimeFrame(4, TimeFrame.Hour),
+    "1D": TimeFrame.Day
+}
+```
+
+## Data Streaming
+
+### Connection Setup
+
+```python
+async def start_streaming(self):
+    """Start the streaming connection"""
+    try:
+        # Connect to the streaming client
+        await self.stream_client.connect()
+        
+        # Subscribe to existing symbols
+        if self.subscribed_symbols:
+            await self.subscribe_to_bars(list(self.subscribed_symbols))
+        
+        # Start processing messages
+        await self.stream_client._run_forever()
+    except Exception as e:
+        logger.error(f"Error starting streaming: {e}")
+        raise
+```
+
+### Bar Data Handling
+
+```python
+async def _handle_bar(self, bar):
+    """Handle incoming bar data"""
+    try:
+        symbol = bar.symbol
+        
+        # Convert bar to DataFrame row
+        bar_data = {
+            'open': bar.open,
+            'high': bar.high,
+            'low': bar.low,
+            'close': bar.close,
+            'volume': bar.volume,
+            'timestamp': bar.timestamp
+        }
+        
+        # Update cache and notify callbacks
+        self._latest_bars[symbol] = pd.concat([
+            self._latest_bars.get(symbol, pd.DataFrame()),
+            pd.DataFrame([bar_data])
+        ], ignore_index=True)
+        
+        for callback in self._callbacks:
+            await callback(symbol, self._latest_bars[symbol])
+            
+    except Exception as e:
+        logger.error(f"Error handling bar data: {e}")
+```
+
+## Historical Data
+
+### Data Retrieval
+
+```python
+async def get_bars(self, symbol: str, timeframe: str = "1H", limit: int = 100):
+    """Fetch historical bars for a symbol"""
+    try:
+        end = datetime.now(pytz.UTC)
+        multiplier = 3 if timeframe in ["4H", "1D"] else 1
+        start = end - timedelta(days=limit * multiplier)
+        
+        request = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=self.timeframe_map[timeframe],
+            start=start,
+            end=end
         )
+        
+        bars = self.hist_client.get_stock_bars(request)
+        
+        if bars and hasattr(bars, 'df'):
+            df = bars.df.reset_index(level=[0,1])
+            df = df.dropna().sort_values('timestamp')
+            return df
+            
+        raise ValueError(f"No data returned for {symbol}")
+        
+    except Exception as e:
+        logger.error(f"Error fetching bars for {symbol}: {e}")
+        raise
 ```
-
-### 3. Position Tracking
-```python
-# Implementation in strategy/position_tracker.py
-class PositionTracker:
-    def __init__(self):
-        self.api = tradeapi.REST()
-    
-    async def get_positions(self):
-        return await self.api.list_positions()
-```
-
-## Implementation Steps
-
-### 1. Environment Setup
-```bash
-# Required environment variables
-ALPACA_API_KEY=your_api_key
-ALPACA_API_SECRET=your_secret_key
-ALPACA_API_URL=https://paper-api.alpaca.markets  # Paper trading
-```
-
-### 2. Data Stream Integration
-1. Initialize connection
-2. Subscribe to relevant data streams
-3. Process incoming data
-4. Update technical indicators
-5. Generate signals
-
-### 3. Order Execution System
-1. Validate trading signals
-2. Check risk parameters
-3. Calculate position size
-4. Submit orders
-5. Track order status
-
-### 4. Position Management
-1. Monitor open positions
-2. Track P&L
-3. Implement stop-loss
-4. Handle position exits
-5. Update portfolio status
-
-## API Endpoints
-
-### Market Data
-- `/v2/stocks/{symbol}/trades`
-- `/v2/stocks/{symbol}/bars`
-- `/v2/stocks/{symbol}/quotes`
-
-### Account & Orders
-- `/v2/account`
-- `/v2/orders`
-- `/v2/positions`
 
 ## Error Handling
 
-### Common Errors
-1. Connection Issues
-```python
-try:
-    await self.api.get_account()
-except APIError as e:
-    logger.error(f"API Connection Error: {e}")
+### Common Issues
+
+1. **Connection Errors**
+   ```python
+   try:
+       await self.stream_client.connect()
+   except Exception as e:
+       logger.error(f"Connection error: {e}")
+       await asyncio.sleep(5)  # Backoff
+       await self.reconnect()
+   ```
+
+2. **Rate Limits**
+   ```python
+   if response.status_code == 429:
+       wait_time = int(response.headers.get('Retry-After', 60))
+       logger.warning(f"Rate limit hit, waiting {wait_time}s")
+       await asyncio.sleep(wait_time)
+   ```
+
+3. **Data Validation**
+   ```python
+   def validate_data(self, df):
+       if df is None or df.empty:
+           raise ValueError("No data available")
+       if not all(col in df.columns for col in ['open', 'high', 'low', 'close']):
+           raise ValueError("Missing required columns")
+   ```
+
+## Best Practices
+
+### 1. Connection Management
+- Implement automatic reconnection
+- Handle connection timeouts
+- Monitor connection health
+- Log connection events
+
+### 2. Data Handling
+- Cache frequently used data
+- Implement data validation
+- Handle missing data gracefully
+- Maintain data consistency
+
+### 3. Error Recovery
+- Implement exponential backoff
+- Log detailed error information
+- Notify on critical failures
+- Maintain operation state
+
+### 4. Performance
+- Optimize data structures
+- Minimize API calls
+- Use appropriate timeframes
+- Implement efficient caching
+
+## Configuration
+
+### Environment Variables
+```env
+ALPACA_API_KEY=your_api_key
+ALPACA_API_SECRET=your_api_secret
+ALPACA_API_URL=https://paper-api.alpaca.markets
 ```
 
-2. Order Validation
+### Runtime Settings
 ```python
-try:
-    await self.api.submit_order(...)
-except InsufficientFundsError:
-    logger.error("Insufficient funds for order")
-```
-
-3. Position Limits
-```python
-if len(await self.api.list_positions()) >= MAX_POSITIONS:
-    logger.warning("Maximum positions reached")
-```
-
-## Testing Strategy
-
-### 1. Unit Tests
-```python
-def test_order_submission():
-    order_manager = OrderManager()
-    order = order_manager.place_order("AAPL", 100, "buy")
-    assert order.status == "accepted"
-```
-
-### 2. Integration Tests
-```python
-async def test_market_data_stream():
-    stream = AlpacaDataStream()
-    await stream.subscribe(["AAPL"])
-    # Verify data reception
+config = {
+    'default_timeframe': '15Min',
+    'cache_duration': 3600,  # 1 hour
+    'reconnect_attempts': 3,
+    'backoff_factor': 2,
+}
 ```
 
 ## Monitoring
 
-### 1. Performance Metrics
-- Order execution latency
-- Data stream lag
-- Position update frequency
-- API rate limit usage
-
-### 2. Health Checks
+### 1. Connection Health
 - Connection status
-- Data stream status
-- Order processing status
-- Position tracking accuracy
+- Latency metrics
+- Error rates
+- Reconnection attempts
 
-## Next Steps
+### 2. Data Quality
+- Data freshness
+- Missing data points
+- Data consistency
+- Update frequency
 
-### Phase 1: Basic Integration
-1. Set up API connections
-2. Implement market data streaming
-3. Add basic order submission
-4. Create position tracking
+### 3. API Usage
+- Rate limit status
+- Request counts
+- Response times
+- Error distribution
 
-### Phase 2: Enhanced Features
-1. Advanced order types
-2. Portfolio rebalancing
-3. Risk management rules
-4. Performance reporting
+## Testing
 
-### Phase 3: Optimization
-1. Latency reduction
-2. Error recovery
-3. Rate limit optimization
-4. Logging improvements
+### 1. Unit Tests
+```python
+def test_data_validation():
+    manager = AlpacaDataManager()
+    with pytest.raises(ValueError):
+        manager.validate_data(None)
+    with pytest.raises(ValueError):
+        manager.validate_data(pd.DataFrame())
+```
 
-## Security Considerations
+### 2. Integration Tests
+```python
+async def test_historical_data():
+    manager = AlpacaDataManager()
+    data = await manager.get_bars("AAPL", "1H", 100)
+    assert len(data) > 0
+    assert all(col in data.columns for col in ['open', 'high', 'low', 'close'])
+```
 
-### 1. API Key Management
-- Use environment variables
-- Implement key rotation
+## Deployment Considerations
+
+### 1. Production Setup
+- Use paper trading initially
 - Monitor API usage
-- Log suspicious activity
+- Implement proper logging
+- Set up alerts
 
-### 2. Order Validation
-- Double-check calculations
-- Implement safety checks
-- Verify position sizes
-- Monitor risk limits
-
-### 3. Error Prevention
-- Implement circuit breakers
-- Add order throttling
-- Validate all inputs
-- Monitor system health
+### 2. Scaling
+- Optimize connection usage
+- Manage memory efficiently
+- Handle multiple symbols
+- Consider rate limits
