@@ -181,230 +181,195 @@ strategy("The Blackprint Strategy", overlay=true)
 
 # Blackprint Trading Strategy Design
 
-## Overview
-The Blackprint trading strategy is based on Al Pickett's methodology, combining technical analysis with risk management to identify and execute high-probability trades.
+## Market Phase Detection
 
-## Core Components
+### Core Phases
 
-### 1. Technical Analysis
-```python
-# Key indicators used in strategy/indicators.py
-- RSI (Relative Strength Index)
-- Moving Averages (EMA, SMA)
-- Volume Analysis
-- Price Action Patterns
-```
+1. **TRENDING Phase**
+   - Strong directional movement
+   - EMAs properly aligned (Fast > Medium > Slow)
+   - Positive slopes across all EMAs
+   - Strong momentum confirmation
+   - Low volatility relative to trend strength
 
-### 2. Entry Conditions
-1. Primary Trend Alignment
-   - Identify trend using multiple timeframes
-   - Confirm trend strength with volume
-   - Validate momentum indicators
-
-2. Entry Triggers
-   - Price action confirmation
+2. **EMERGING Phase**
+   - Early trend development
+   - EMAs beginning to align
+   - Accelerating momentum
+   - Price breaking key levels
    - Volume confirmation
-   - Indicator convergence
 
-### 3. Risk Management
-```python
-# Implementation in strategy/risk_manager.py
-- Position Sizing: 2% risk per trade
-- Maximum Positions: 5 concurrent trades
-- Stop Loss: Technical or % based
-- Take Profit: R-multiple based
-```
+3. **PULLBACK Phase**
+   - Temporary price retracement
+   - Price between Fast and Medium EMAs
+   - Prior trend structure intact
+   - Momentum showing signs of reversal
+   - Support/resistance levels holding
 
-### 4. Position Management
-1. Entry Management
-   - Partial position entries
-   - Scaling in opportunities
-   - Entry price optimization
+4. **UNORDERED Phase**
+   - No clear directional bias
+   - EMAs tightly grouped
+   - Choppy price action
+   - Low momentum readings
+   - High relative volatility
 
-2. Exit Management
-   - Trailing stops
-   - Partial profit taking
-   - Break-even adjustments
+### Technical Indicators
 
-## Strategy Parameters
+1. **Exponential Moving Averages (EMAs)**
+   - Fast EMA (13 periods)
+   - Medium EMA (34 periods)
+   - Slow EMA (89 periods)
+   - Used for trend direction and strength
+   - Slope calculations for momentum
 
-### 1. Time Frames
-- Primary: 1 Hour
-- Secondary: 4 Hour
-- Trend: Daily
+2. **Momentum Indicators**
+   - Price momentum relative to EMAs
+   - Rate of change calculations
+   - Acceleration/deceleration patterns
+   - Volume confirmation
 
-### 2. Technical Parameters
-```python
-# Default values in config/strategy.py
-RSI_PERIOD = 14
-RSI_OVERBOUGHT = 70
-RSI_OVERSOLD = 30
-EMA_FAST = 12
-EMA_SLOW = 26
-VOLUME_MA = 20
-```
+3. **Volatility Measures**
+   - Price range relative to trend
+   - EMA spread analysis
+   - Momentum volatility
+   - Volume volatility
 
-### 3. Risk Parameters
-```python
-# Default values in config/risk.py
-RISK_PER_TRADE = 0.02  # 2%
-MAX_POSITIONS = 5
-STOP_LOSS_ATR = 2
-TAKE_PROFIT_RR = 2  # Risk:Reward ratio
-```
+### Phase Detection Algorithm
 
-## Signal Generation
+1. **Data Preparation**
+   ```python
+   def prepare_data(df):
+       # Calculate EMAs
+       df['ema_fast'] = calculate_ema(df, 13)
+       df['ema_medium'] = calculate_ema(df, 34)
+       df['ema_slow'] = calculate_ema(df, 89)
+       
+       # Calculate slopes
+       df['fast_slope'] = calculate_slope(df['ema_fast'])
+       df['medium_slope'] = calculate_slope(df['ema_medium'])
+       df['slow_slope'] = calculate_slope(df['ema_slow'])
+       
+       # Calculate momentum
+       df['momentum'] = calculate_momentum(df)
+       
+       return df
+   ```
 
-### 1. Entry Signals
-```python
-class SignalGenerator:
-    def generate_entry_signal(self, data):
-        # 1. Trend Analysis
-        trend = self.analyze_trend(data)
-        
-        # 2. Volume Confirmation
-        volume_valid = self.check_volume(data)
-        
-        # 3. Technical Confirmation
-        technicals_valid = self.check_technicals(data)
-        
-        # 4. Generate Signal
-        if all([trend, volume_valid, technicals_valid]):
-            return self.create_signal('ENTRY')
-```
+2. **Phase Detection Logic**
+   ```python
+   def detect_phase(df):
+       # Check for trending phase first
+       if is_trending(df):
+           return MarketPhase.TRENDING
+       
+       # Check for pullback in existing trend
+       if is_pullback(df):
+           return MarketPhase.PULLBACK
+       
+       # Check for emerging trend
+       if is_emerging(df):
+           return MarketPhase.EMERGING
+       
+       # Default to unordered
+       return MarketPhase.UNORDERED
+   ```
 
-### 2. Exit Signals
-```python
-class SignalGenerator:
-    def generate_exit_signal(self, position):
-        # 1. Stop Loss Check
-        if self.check_stop_loss(position):
-            return self.create_signal('EXIT')
-        
-        # 2. Take Profit Check
-        if self.check_take_profit(position):
-            return self.create_signal('EXIT')
-        
-        # 3. Technical Exit
-        if self.check_technical_exit(position):
-            return self.create_signal('EXIT')
-```
+### Implementation Details
 
-## Backtesting Framework
+1. **Trend Detection**
+   - EMA alignment check
+   - Slope thresholds
+   - Momentum confirmation
+   - Volume validation
 
-### 1. Data Requirements
-- Historical price data (OHLCV)
-- Volume data
-- Market condition data
+2. **Phase Transitions**
+   - Clear transition rules
+   - Confirmation requirements
+   - Momentum thresholds
+   - Time-based filters
 
-### 2. Performance Metrics
-```python
-# Implementation in analysis/performance.py
-- Sharpe Ratio
-- Maximum Drawdown
-- Win Rate
-- Average R-Multiple
-- Profit Factor
-```
+3. **Risk Management**
+   - Position sizing based on phase
+   - Stop-loss placement
+   - Profit targets
+   - Risk-reward ratios
 
-### 3. Optimization Parameters
-- Entry timing
-- Position sizing
-- Stop loss placement
-- Take profit levels
+## Analysis Features
 
-## Real-Time Execution
+### Real-time Analysis
+- Continuous market monitoring
+- Instant phase detection
+- Alert generation
+- Position management
 
-### 1. Market Data Processing
-```python
-class MarketDataProcessor:
-    def process_data(self, data):
-        # 1. Clean Data
-        cleaned_data = self.clean_data(data)
-        
-        # 2. Calculate Indicators
-        indicators = self.calculate_indicators(cleaned_data)
-        
-        # 3. Generate Signals
-        signals = self.generate_signals(indicators)
-        
-        return signals
-```
+### Historical Analysis
+- Phase distribution analysis
+- Success rate by phase
+- Risk metrics by phase
+- Performance analytics
 
-### 2. Order Execution
-```python
-class OrderExecutor:
-    def execute_signal(self, signal):
-        # 1. Validate Signal
-        if not self.validate_signal(signal):
-            return
-        
-        # 2. Calculate Position Size
-        size = self.calculate_position_size(signal)
-        
-        # 3. Submit Order
-        order = self.submit_order(signal, size)
-        
-        # 4. Track Order
-        self.track_order(order)
-```
+### Visualization
+- Phase distribution charts
+- EMA relationship diagrams
+- Momentum indicators
+- Volume analysis
 
-## Risk Controls
+## Configuration
 
-### 1. Pre-Trade Checks
-- Account balance verification
-- Position limit check
-- Risk per trade validation
-- Market condition assessment
+### Timeframe Settings
+- Default: 15-minute candles
+- Configurable via `/candle` command
+- Supported ranges: 1min to 1day
+- Automatic data adjustment
 
-### 2. Post-Trade Monitoring
-- Position tracking
-- P&L monitoring
-- Stop loss verification
-- Technical indicator monitoring
-
-### 3. System Safeguards
-- Circuit breakers
-- Error handling
-- Connection monitoring
-- Data validation
-
-## Performance Analysis
-
-### 1. Trade Metrics
-- Win/Loss ratio
-- Average trade duration
-- Risk/Reward achieved
-- Maximum adverse excursion
-
-### 2. Portfolio Metrics
-- Overall return
-- Risk-adjusted return
-- Drawdown analysis
+### Reference Index
+- Default: US30 (Dow Jones)
+- Configurable via `/setindex`
+- Multiple index support
 - Correlation analysis
 
-### 3. Strategy Metrics
-- Signal quality
-- Entry/exit efficiency
-- Technical indicator effectiveness
-- Market condition performance
+### Alert Settings
+- Phase change notifications
+- Price alerts
+- Momentum alerts
+- Risk warnings
 
-## Implementation Roadmap
+## Future Enhancements
 
-### Phase 1: Core Strategy
-1. Basic indicator calculation
-2. Signal generation
-3. Risk management
-4. Order execution
+### Machine Learning Integration
+- Pattern recognition
+- Phase prediction
+- Risk assessment
+- Performance optimization
 
-### Phase 2: Enhancement
-1. Advanced position management
-2. Dynamic parameter adjustment
-3. Market condition analysis
-4. Performance optimization
+### Advanced Analytics
+- Multi-timeframe analysis
+- Correlation studies
+- Market regime detection
+- Sentiment analysis
 
-### Phase 3: Refinement
-1. Machine learning integration
-2. Alternative data sources
-3. Advanced risk models
-4. Portfolio optimization
+### Risk Management
+- Dynamic position sizing
+- Portfolio optimization
+- Drawdown protection
+- Risk factor analysis
+
+## Performance Metrics
+
+### Phase Accuracy
+- Phase transition accuracy
+- False signal rate
+- Confirmation time
+- Success rate by phase
+
+### Risk Metrics
+- Maximum drawdown
+- Sharpe ratio
+- Sortino ratio
+- Win/loss ratio
+
+### System Performance
+- Processing latency
+- Update frequency
+- Data accuracy
+- Alert reliability

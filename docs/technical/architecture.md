@@ -1,121 +1,146 @@
 # Blackprint Trading Bot Architecture
 
 ## Overview
-Blackprint is a sophisticated trading bot that implements Al Pickett's Blackprint trading strategy. The bot provides market analysis, trading signals, and automated trade execution through a Telegram interface.
+
+Blackprint is a market phase detection and trading bot built with Python, using asynchronous programming for real-time market data processing and Telegram for user interaction.
 
 ## Core Components
 
-### 1. Bot Interface (`bot/`)
-- `telegram_bot.py`: Handles Telegram bot commands and user interactions
-- `trading_service.py`: Bridges strategy analysis with Telegram interface
-- `main.py`: Application entry point and configuration
+### 1. Telegram Bot Interface (`bot/telegram_bot.py`)
+- Handles user commands and interactions
+- Manages command parsing and response formatting
+- Implements asynchronous message handling
+- Provides real-time market updates
+- Features:
+  - Free-form symbol input
+  - Customizable candle lengths
+  - Historical analysis visualization
+  - Real-time phase notifications
 
-### 2. Strategy Implementation (`strategy/`)
-- `signal_generator.py`: Implements trading signal generation logic
-- `indicators.py`: Technical analysis indicators using pandas-ta
-- Future: Position sizing and risk management
+### 2. Market Phase Detector (`bot/market_phases.py`)
+- Implements market phase detection algorithm
+- Analyzes price action and momentum
+- Calculates technical indicators
+- Phases:
+  - TRENDING: Strong directional movement
+  - EMERGING: Early trend development
+  - PULLBACK: Temporary price retracement
+  - UNORDERED: No clear direction
 
-### 3. Data Management
-- Market data fetching via yfinance
-- Future: Real-time data streaming via Alpaca API
-- Historical data caching and analysis
+### 3. Data Manager (`bot/data_manager.py`)
+- Manages Alpaca API integration
+- Handles real-time data streaming
+- Processes historical data requests
+- Features:
+  - Configurable timeframes
+  - Data caching
+  - Error handling
+  - Rate limit management
 
-### 4. Risk Management (`risk/`)
-- Position sizing calculations
-- Risk per trade enforcement
-- Maximum positions limit
-- Account balance management
+### 4. Market Manager (`bot/market_manager.py`)
+- Coordinates market analysis
+- Manages market state
+- Handles phase transitions
+- Provides formatted analysis results
 
-## Technical Stack
+## Data Flow
 
-### Core Technologies
-- Python 3.11+
-- pandas-ta for technical analysis
-- python-telegram-bot for bot interface
-- yfinance for market data
-- Docker for containerization
-
-### Dependencies
-- alpaca-trade-api: Trading interface
-- pandas: Data manipulation
-- numpy: Numerical computations
-- pandas-ta: Technical analysis
-- python-telegram-bot: Bot framework
-- python-dotenv: Environment management
-
-## Development Environment
-
-### Docker Setup
-- `Dockerfile.dev`: Development environment configuration
-- `docker-compose.dev.yml`: Service orchestration
-- Development tools (pytest, black, flake8)
-
-### Configuration
-Required environment variables:
+```mermaid
+graph TD
+    A[User Input] --> B[Telegram Bot]
+    B --> C[Command Handler]
+    C --> D[Data Manager]
+    D --> E[Market Phase Detector]
+    E --> F[Market Manager]
+    F --> B
+    D <--> G[Alpaca API]
 ```
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-ALPACA_API_KEY=your_alpaca_api_key
-ALPACA_API_SECRET=your_alpaca_api_secret
-RISK_PER_TRADE=0.02
-MAX_POSITIONS=5
-DEFAULT_ACCOUNT_SIZE=100000
-```
+
+## Asynchronous Architecture
+
+- Uses Python's `asyncio` for concurrent operations
+- Implements event-driven data processing
+- Manages multiple data streams efficiently
+- Handles real-time updates without blocking
+
+## Error Handling
+
+1. Data Validation
+   - Symbol verification
+   - Data availability checks
+   - Format validation
+
+2. API Error Handling
+   - Rate limit management
+   - Connection retry logic
+   - Timeout handling
+
+3. User Input Validation
+   - Command format checking
+   - Parameter validation
+   - Safe type conversion
+
+## Configuration Management
+
+1. Environment Variables
+   - API credentials
+   - Bot settings
+   - Market parameters
+
+2. Runtime Configuration
+   - Candle length
+   - Reference index
+   - Analysis parameters
 
 ## Deployment
 
-### Container Structure
-```
-/app/
-├── bot/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── telegram_bot.py
-│   └── trading_service.py
-├── strategy/
-│   ├── __init__.py
-│   ├── signal_generator.py
-│   └── indicators.py
-├── risk/
-│   ├── __init__.py
-│   └── management.py
-└── tests/
-    └── ...
-```
+1. Docker Container
+   - Python 3.11 base image
+   - Dependency management
+   - Environment isolation
 
-### Deployment Process
-1. Build Docker image
-2. Configure environment variables
-3. Deploy container
-4. Monitor logs and performance
+2. Docker Compose
+   - Service orchestration
+   - Environment configuration
+   - Volume management
 
-## Next Steps
+## Monitoring and Logging
 
-### 1. Alpaca API Integration
-- Implement real-time market data streaming
-- Add order execution functionality
-- Develop position tracking system
-- Implement account management
+1. Application Logs
+   - Command execution
+   - Error tracking
+   - Performance metrics
 
-### 2. Enhanced Risk Management
-- Implement dynamic position sizing
-- Add portfolio risk controls
-- Develop drawdown protection
-- Create risk reporting system
+2. Market Data Logs
+   - Phase transitions
+   - Price updates
+   - Analysis results
 
-### 3. Strategy Refinements
-- Implement advanced entry/exit rules
-- Add market regime detection
-- Develop multi-timeframe analysis
-- Create performance analytics
+## Security
 
-### 4. System Improvements
-- Add comprehensive logging
-- Implement error handling
-- Create monitoring dashboard
-- Develop backup systems
+1. API Security
+   - Secure credential storage
+   - API key rotation
+   - Rate limit compliance
 
-### 5. Testing and Validation
-- Expand unit test coverage
-- Add integration tests
-- Implement strategy backtesting
-- Create performance benchmarks
+2. User Authentication
+   - Telegram bot token
+   - User session management
+   - Command access control
+
+## Future Enhancements
+
+1. Technical
+   - Machine learning integration
+   - Advanced indicator support
+   - Performance optimization
+
+2. Features
+   - Portfolio management
+   - Risk analysis
+   - Backtesting capabilities
+
+3. Infrastructure
+   - Scaling capabilities
+   - Multi-market support
+   - Enhanced monitoring
