@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any
 import logging
 from datetime import datetime
 import pytz
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -58,7 +58,7 @@ class BlackprintBot:
         self.application.add_handler(CommandHandler("help", self.help_command))
         
         # Market analysis commands
-        self.application.add_handler(CommandHandler("analyze", self.analyze_command))
+        self.application.add_handler(CommandHandler("analyze", self.analyze_stock))
         self.application.add_handler(CommandHandler("historical", self.historical_command))
         self.application.add_handler(CommandHandler("subscribe", self.subscribe_command))
         self.application.add_handler(CommandHandler("unsubscribe", self.unsubscribe_command))
@@ -66,6 +66,7 @@ class BlackprintBot:
         # Settings commands
         self.application.add_handler(CommandHandler("setcandle", self.set_candle_command))
         self.application.add_handler(CommandHandler("setindex", self.set_index_command))
+        self.application.add_handler(CommandHandler("candle", self.handle_candle_length))
         
         # Callback query handler for inline buttons
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
@@ -84,15 +85,20 @@ class BlackprintBot:
     async def run(self):
         """Start the bot and begin streaming market data"""
         try:
-            # Start the bot
+            # First, try to clean up any existing connections
+            try:
+                await self.application.bot.delete_webhook(drop_pending_updates=True)
+                await asyncio.sleep(10)  # Wait for Telegram to clean up
+            except Exception as e:
+                logger.warning(f"Error cleaning up webhook: {e}")
+            
+            # Start the bot with polling
             await self.application.initialize()
             await self.application.start()
+            await self.application.updater.start_polling(allowed_updates=['message', 'callback_query'])
             
             # Start streaming market data
             await self.start_streaming()
-            
-            # Start polling for updates
-            await self.application.updater.start_polling()
             
             # Keep the application running
             while True:
@@ -102,10 +108,10 @@ class BlackprintBot:
             logger.error(f"Error running bot: {e}")
             raise
         finally:
-            # Cleanup
-            await self.application.updater.stop()
-            await self.application.stop()
-            await self.application.shutdown()
+            try:
+                await self.application.stop()
+            except Exception as e:
+                logger.error(f"Error stopping application: {e}")
     
     def get_main_keyboard(self) -> ReplyKeyboardMarkup:
         """Create the main keyboard with common commands"""
@@ -170,7 +176,7 @@ class BlackprintBot:
             symbol = data.split("_")[1]
             # Create new context args for the analyze command
             context.args = [symbol]
-            await self.analyze_command(update, context)
+            await self.analyze_stock(update, context)
             
         elif data.startswith("timeframe_"):
             timeframe = data.split("_")[1]
@@ -231,72 +237,139 @@ class BlackprintBot:
         )
         await update.message.reply_text(help_text, parse_mode='Markdown')
     
-    async def analyze_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Get current market phase analysis"""
-        if not context.args or len(context.args) != 1:
-            await update.message.reply_text(
-                "Select a symbol to analyze:",
-                reply_markup=self.get_symbol_keyboard()
-            )
-            return
-        
-        symbol = context.args[0].upper()
+    async def analyze_stock(self, update: Update, context: CallbackContext) -> None:
+        """Analyze a stock symbol"""
         try:
-            # Get current market state
-            state = self.market_manager.get_current_state(symbol)
-            if not state:
+            # Get symbol from either command args or direct message
+            if context.args:
+                symbol = context.args[0].upper()
+            elif update.message.text.startswith('/'):
                 await update.message.reply_text(
-                    f"⏳ Gathering data for {symbol}... Please try again in a few minutes."
+                    "Please provide a stock symbol to analyze (e.g., /analyze AAPL)",
+                    reply_markup=self.get_main_keyboard()
                 )
                 return
-            
-            # Format response
-            response = self.market_manager.format_market_state(state)
-            await update.message.reply_text(response, parse_mode='Markdown')
-            
-        except Exception as e:
-            logger.error(f"Error analyzing {symbol}: {e}")
+            else:
+                symbol = update.message.text.strip().upper()
+
+            # Remove the buttons and show analyzing message
             await update.message.reply_text(
-                f"❌ Error analyzing {symbol}. Please try again later."
+                f"📊 Analyzing {symbol} with {self.data_manager.candle_length}-minute candles...",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            
+            try:
+                # Get the historical data
+                df = await self.data_manager.get_bars(symbol)
+                if df is None or df.empty:
+                    await update.message.reply_text(
+                        f"❌ No data found for {symbol}. Please check the symbol and try again.",
+                        reply_markup=self.get_main_keyboard()
+                    )
+                    return
+                
+                # Get the analysis
+                phase, metrics = self.market_manager.detect_phase(df)
+                
+                # Format the response
+                response = (
+                    f"Analysis for {symbol} ({self.data_manager.candle_length}min candles):\n\n"
+                    f"🏷 Market Phase: {phase.value.upper()}\n"
+                    f"📈 Current Price: ${metrics['close']:.2f}\n"
+                    f"📊 EMAs:\n"
+                    f"  • Fast: ${metrics['ema_fast']:.2f} ({'+' if metrics['fast_slope'] > 0 else ''}{metrics['fast_slope']:.4f})\n"
+                    f"  • Medium: ${metrics['ema_medium']:.2f} ({'+' if metrics['medium_slope'] > 0 else ''}{metrics['medium_slope']:.4f})\n"
+                    f"  • Slow: ${metrics['ema_slow']:.2f} ({'+' if metrics['slow_slope'] > 0 else ''}{metrics['slow_slope']:.4f})\n"
+                    f"💫 Momentum: {'+' if metrics['price_momentum'] > 0 else ''}{metrics['price_momentum']:.4f}"
+                )
+                
+                await update.message.reply_text(
+                    response,
+                    reply_markup=self.get_main_keyboard()
+                )
+                
+            except ValueError as e:
+                await update.message.reply_text(
+                    f"❌ Error analyzing {symbol}: {str(e)}",
+                    reply_markup=self.get_main_keyboard()
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in analyze_stock: {e}")
+            await update.message.reply_text(
+                "❌ An error occurred while analyzing the stock. Please try again later.",
+                reply_markup=self.get_main_keyboard()
             )
     
     async def historical_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Get historical market phase analysis"""
-        if not context.args or len(context.args) < 3:
-            await update.message.reply_text(
-                "❌ Please specify symbol and datetime.\n"
-                "Example: `/historical AAPL 2025-02-18 14:30`",
-                parse_mode='Markdown'
-            )
-            return
-        
-        symbol = context.args[0].upper()
         try:
-            # Parse datetime (assumed to be in US/Eastern)
-            date_str = f"{context.args[1]} {context.args[2]}"
-            eastern = pytz.timezone('US/Eastern')
-            timestamp = eastern.localize(datetime.strptime(date_str, "%Y-%m-%d %H:%M"))
-            
-            # Get historical state
-            state = await self.market_manager.get_historical_state(symbol, timestamp)
-            if not state:
+            if not context.args or len(context.args) != 1:
                 await update.message.reply_text(
-                    f"❌ No data found for {symbol} at {date_str} ET"
+                    "Please provide a stock symbol (e.g., /historical AAPL)",
+                    reply_markup=self.get_main_keyboard()
                 )
                 return
             
-            # Format response
-            response = self.market_manager.format_market_state(state, is_historical=True)
-            await update.message.reply_text(response, parse_mode='Markdown')
-            
-        except ValueError:
+            symbol = context.args[0].upper()
             await update.message.reply_text(
-                "❌ Invalid datetime format. Use: YYYY-MM-DD HH:MM"
+                f"📊 Analyzing historical data for {symbol} with {self.data_manager.candle_length}-minute candles...",
+                reply_markup=ReplyKeyboardRemove()
             )
+            
+            try:
+                # Get historical data
+                df = await self.data_manager.get_bars(symbol, limit=200)  # Get more historical data
+                if df is None or df.empty:
+                    await update.message.reply_text(
+                        f"❌ No historical data found for {symbol}. Please check the symbol and try again.",
+                        reply_markup=self.get_main_keyboard()
+                    )
+                    return
+                
+                # Analyze phases over time
+                phases = []
+                for i in range(max(len(df)-10, 0), len(df)):  # Look at last 10 periods
+                    subset = df.iloc[:i+1]
+                    phase, _ = self.market_manager.detect_phase(subset)
+                    phases.append(phase.value)
+                
+                # Count phase occurrences
+                phase_counts = {}
+                for phase in phases:
+                    phase_counts[phase] = phase_counts.get(phase, 0) + 1
+                
+                # Format response
+                current_phase, metrics = self.market_manager.detect_phase(df)
+                response = (
+                    f"Historical Analysis for {symbol} ({self.data_manager.candle_length}min candles):\n\n"
+                    f"🏷 Current Phase: {current_phase.value.upper()}\n"
+                    f"📈 Current Price: ${metrics['close']:.2f}\n\n"
+                    f"📊 Recent Phase Distribution:\n"
+                )
+                
+                for phase, count in phase_counts.items():
+                    percentage = (count / len(phases)) * 100
+                    response += f"  • {phase.upper()}: {'▓' * int(percentage/10)}{'░' * (10-int(percentage/10))} {percentage:.1f}%\n"
+                
+                response += f"\n💫 Current Momentum: {'+' if metrics['price_momentum'] > 0 else ''}{metrics['price_momentum']:.4f}"
+                
+                await update.message.reply_text(
+                    response,
+                    reply_markup=self.get_main_keyboard()
+                )
+                
+            except ValueError as e:
+                await update.message.reply_text(
+                    f"❌ Error analyzing historical data for {symbol}: {str(e)}",
+                    reply_markup=self.get_main_keyboard()
+                )
+                
         except Exception as e:
-            logger.error(f"Error getting historical data for {symbol}: {e}")
+            logger.error(f"Error in historical_command: {e}")
             await update.message.reply_text(
-                f"❌ Error retrieving historical data. Please try again later."
+                "❌ An error occurred while analyzing historical data. Please try again later.",
+                reply_markup=self.get_main_keyboard()
             )
     
     async def subscribe_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -335,8 +408,30 @@ class BlackprintBot:
         config = PhaseDetectionConfig(candle_size=timeframe)
         self.market_manager.detector.config = config
         await update.message.reply_text(
-            f"✅ Candle size updated to {timeframe}"
+            f"✅ Candle size updated to {timeframe}. Please confirm by typing '/confirm'"
         )
+    
+    async def handle_candle_length(self, update: Update, context: CallbackContext) -> None:
+        """Handle candle length command"""
+        try:
+            if not context.args:
+                await update.message.reply_text(
+                    "Please specify a candle length in minutes (e.g., /candle 5)",
+                    reply_markup=self.get_main_keyboard()
+                )
+                return
+
+            length = int(context.args[0])
+            self.data_manager.set_candle_length(length)
+            await update.message.reply_text(
+                f"✅ Candle length updated to {length} minutes",
+                reply_markup=self.get_main_keyboard()
+            )
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Invalid candle length. Please specify a number in minutes (e.g., /candle 5)",
+                reply_markup=self.get_main_keyboard()
+            )
     
     async def set_index_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Set the reference index for market phase detection"""

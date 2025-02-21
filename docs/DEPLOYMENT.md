@@ -2,96 +2,92 @@
 
 ## Prerequisites
 
-1. **API Keys and Tokens**
-   - Telegram Bot Token (from @BotFather)
-   - Alpaca API Key and Secret (from Alpaca dashboard)
-   - Paper trading account recommended for initial testing
+- Docker and Docker Compose
+- Telegram Bot Token (from @BotFather)
+- Alpaca API Key and Secret (from Alpaca dashboard)
 
-2. **System Requirements**
-   - Python 3.10+
-   - pip package manager
-   - Git
-   - Screen or tmux (for production deployment)
+## Environment Setup
+
+1. Copy the example environment file:
+   ```bash
+   cp env.example .env
+   ```
+
+2. Update the following variables in `.env`:
+   - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
+   - `ALPACA_API_KEY`: Your Alpaca API key
+   - `ALPACA_API_SECRET`: Your Alpaca API secret
+   - `ALPACA_API_URL`: Use `https://paper-api.alpaca.markets` for paper trading
 
 ## Local Deployment
 
-1. **Environment Setup**
+1. Build and start the container:
    ```bash
-   # Clone repository
-   git clone https://github.com/henryjrobinson/blackprint.git
-   cd blackprint
-
-   # Create virtual environment
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-   # Install dependencies
-   pip install -r requirements.txt
+   docker-compose up --build -d
    ```
 
-2. **Configuration**
+2. Check the logs:
    ```bash
-   # Copy example environment file
-   cp env.example .env
-
-   # Edit .env with your credentials
-   TELEGRAM_BOT_TOKEN=your_bot_token
-   ALPACA_API_KEY=your_alpaca_key
-   ALPACA_SECRET_KEY=your_alpaca_secret
+   docker-compose logs -f
    ```
 
-3. **Running Locally**
+3. Stop the bot:
    ```bash
-   # Start the bot
-   python -m bot.main
+   docker-compose down
    ```
 
-## Production Deployment
+## Bot Commands
 
-1. **Server Setup** (Example using Ubuntu)
+The bot supports the following commands:
+
+- `/start` - Initialize the bot and get help
+- `/help` - Display available commands
+- `/analyze SYMBOL` - Analyze current market phase for any symbol
+- `/historical SYMBOL` - Show historical phase distribution
+- `/candle NUMBER` - Set candle length in minutes (e.g., `/candle 5`)
+- `/subscribe SYMBOL` - Subscribe to real-time updates
+- `/unsubscribe SYMBOL` - Unsubscribe from updates
+
+You can also analyze any symbol by simply typing its ticker (e.g., "AAPL").
+
+## Error Handling
+
+The bot includes robust error handling for:
+- Invalid symbols
+- Missing market data
+- Connection issues
+- API rate limits
+
+## Monitoring
+
+Monitor the bot's health through:
+1. Docker container logs
+2. Application logs in the container
+3. Telegram bot status updates
+
+## Troubleshooting
+
+If the bot becomes unresponsive:
+
+1. Check container status:
    ```bash
-   # Update system
-   sudo apt update && sudo apt upgrade -y
-
-   # Install Python and dependencies
-   sudo apt install python3.10 python3.10-venv git screen -y
+   docker-compose ps
    ```
 
-2. **Application Setup**
+2. View recent logs:
    ```bash
-   # Clone and setup
-   git clone https://github.com/henryjrobinson/blackprint.git
-   cd blackprint
-   python3.10 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
+   docker-compose logs --tail=100
    ```
 
-3. **Environment Configuration**
+3. Restart the bot:
    ```bash
-   # Setup environment variables
-   cp env.example .env
-   nano .env  # Edit with your production credentials
+   docker-compose restart
    ```
 
-4. **Running in Production**
+4. If issues persist, full reset:
    ```bash
-   # Using screen for persistent running
-   screen -S blackprint
-   source venv/bin/activate
-   python -m bot.main
-   
-   # Detach from screen: Ctrl+A, then D
-   # Reattach to screen: screen -r blackprint
-   ```
-
-5. **Monitoring and Maintenance**
-   ```bash
-   # Check bot status
-   screen -ls  # List running screens
-   
-   # View logs
-   tail -f logs/bot.log
+   docker-compose down
+   docker-compose up --build -d
    ```
 
 ## Security Considerations
@@ -111,37 +107,21 @@
    - Encrypt sensitive data
    - Monitor disk usage
 
-## Troubleshooting
-
-1. **Common Issues**
-   - Bot not responding: Check internet connection and API keys
-   - Data delays: Verify Alpaca API status
-   - Memory issues: Monitor system resources
-
-2. **Debugging**
-   ```bash
-   # Check logs
-   tail -f logs/bot.log
-   
-   # Test API connections
-   python -m bot.test_connection
-   ```
-
 ## Updating the Bot
 
 1. **Update Process**
    ```bash
-   # Stop the bot (in screen session)
-   Ctrl+C
+   # Stop the bot (in Docker container)
+   docker-compose down
    
    # Pull latest changes
    git pull origin main
    
    # Install any new dependencies
-   pip install -r requirements.txt
+   docker-compose up --build -d
    
    # Restart the bot
-   python -m bot.main
+   docker-compose restart
    ```
 
 ## Backup and Recovery
