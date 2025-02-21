@@ -61,35 +61,31 @@ class AlpacaDataManager:
             logger.error(f"Error subscribing to bars: {e}")
             raise
     
-    def _handle_bar(self, bar):
+    async def _handle_bar(self, bar):
         """Handle incoming bar data"""
         try:
             symbol = bar.symbol
+            if symbol not in self._latest_bars:
+                self._latest_bars[symbol] = pd.DataFrame()
             
-            # Convert bar to DataFrame format
-            bar_df = pd.DataFrame([{
-                'timestamp': bar.timestamp,
+            # Convert bar to DataFrame row
+            bar_data = {
                 'open': bar.open,
                 'high': bar.high,
                 'low': bar.low,
                 'close': bar.close,
-                'volume': bar.volume
-            }])
-            bar_df.set_index('timestamp', inplace=True)
+                'volume': bar.volume,
+                'timestamp': bar.timestamp
+            }
             
             # Update latest bars
-            if symbol not in self._latest_bars:
-                self._latest_bars[symbol] = bar_df
-            else:
-                self._latest_bars[symbol] = pd.concat([self._latest_bars[symbol], bar_df])
-                # Keep only last 100 bars for memory efficiency
-                self._latest_bars[symbol] = self._latest_bars[symbol].tail(100)
+            new_row = pd.DataFrame([bar_data])
+            self._latest_bars[symbol] = pd.concat([self._latest_bars[symbol], new_row], ignore_index=True)
             
             # Notify callbacks
             for callback in self._callbacks:
-                callback(symbol, bar_df)
-            
-            logger.info(f"Received bar data for {bar.symbol}: {bar}")
+                await callback(symbol, self._latest_bars[symbol])
+                
         except Exception as e:
             logger.error(f"Error handling bar data: {e}")
     
