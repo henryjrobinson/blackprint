@@ -63,7 +63,7 @@ class MarketStateManager:
         self._phase_change_callbacks: List[Callable] = []
         
         # Register for real-time updates
-        self.data_manager.register_callback(self._handle_market_update)
+        self.data_manager.add_bar_callback(self._handle_market_update)
     
     def _handle_market_update(self, symbol: str, new_data: pd.DataFrame):
         """Handle real-time market data updates"""

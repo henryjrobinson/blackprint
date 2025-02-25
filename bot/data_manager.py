@@ -1,37 +1,58 @@
-import os
-from typing import Optional, Dict, List, Callable
-import pandas as pd
-from datetime import datetime, timedelta
-import logging
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
-from alpaca.data.live import StockDataStream
+from datetime import datetime, timedelta
+import os
+import pandas as pd
 import pytz
+from typing import Dict, List, Callable
+import logging
 import asyncio
+import websocket
+import json
+import ssl
+import threading
+import random
+import base64
 
 logger = logging.getLogger(__name__)
 
 class AlpacaDataManager:
-    """Manages all interactions with Alpaca's data APIs, including real-time and historical data."""
-    
-    def __init__(self):
-        # Initialize API credentials from environment
-        self.api_key = os.getenv('ALPACA_API_KEY')
-        self.api_secret = os.getenv('ALPACA_API_SECRET')
+    def __init__(self, api_key: str, api_secret: str, base_url: str):
+        """Initialize the data manager"""
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = base_url
+        
+        # Use test stream endpoint
+        if "paper" in base_url:
+            self.ws_endpoint = "wss://stream.data.sandbox.alpaca.markets/v2/iex"
+        else:
+            self.ws_endpoint = "wss://stream.data.alpaca.markets/v2/iex"
+        
+        # Debug log the first few characters of credentials
+        if self.api_key:
+            logger.debug(f"API Key starts with: {self.api_key[:4]}...")
+        else:
+            logger.error("API Key not found in environment")
+            
+        if self.api_secret:
+            logger.debug(f"API Secret starts with: {self.api_secret[:4]}...")
+        else:
+            logger.error("API Secret not found in environment")
         
         logger.info(f"Initializing AlpacaDataManager with API key: {'*' * len(self.api_key) if self.api_key else 'None'}")
         
         if not self.api_key or not self.api_secret:
-            raise ValueError("Alpaca API credentials not found in environment variables. Please check ALPACA_API_KEY and ALPACA_API_SECRET in .env file")
+            raise ValueError("Alpaca API credentials not found in environment variables")
         
-        # Initialize clients
+        # Initialize historical client
         self.hist_client = StockHistoricalDataClient(self.api_key, self.api_secret)
-        self.stream_client = StockDataStream(self.api_key, self.api_secret)
         
-        # Cache for latest market data
-        self._latest_bars: Dict[str, pd.DataFrame] = {}
-        self._callbacks: List[Callable] = []
+        # Initialize WebSocket connection
+        self.ws = None
+        self.ws_thread = None
+        self.ws_running = False
         
         # Map timeframes
         self.timeframe_map = {
@@ -44,87 +65,204 @@ class AlpacaDataManager:
             "1D": TimeFrame.Day
         }
         
-        # Initialize subscribed symbols
+        # Initialize data storage
+        self._latest_bars: Dict[str, pd.DataFrame] = {}
+        self._callbacks: List[Callable] = []
         self.subscribed_symbols = set()
-    
-    async def subscribe_to_bars(self, symbols: List[str]):
-        """Subscribe to real-time bar updates for symbols"""
+
+    def _run_websocket(self):
+        """Run WebSocket connection in a separate thread"""
+        def on_message(ws, message):
+            data = json.loads(message)
+            logger.debug(f"Message received: {data}")
+            if isinstance(data, list):
+                for msg in data:
+                    self._handle_message(msg)
+            else:
+                self._handle_message(data)
+
+        def on_error(ws, error):
+            logger.error(f"WebSocket error: {error}")
+
+        def on_close(ws, close_status_code, close_msg):
+            logger.info(f"WebSocket connection closed: {close_status_code} - {close_msg}")
+            self.ws_running = False
+
+        def on_open(ws):
+            logger.info("WebSocket connection opened")
+            # Send authentication message
+            auth_data = {
+                "action": "auth",
+                "key": self.api_key,
+                "secret": self.api_secret
+            }
+            ws.send(json.dumps(auth_data))
+            logger.info("Authentication message sent")
+            
+            # Wait a bit before subscribing
+            import time
+            time.sleep(1)
+            
+            # Subscribe to test stream
+            subscribe_message = {
+                "action": "subscribe",
+                "trades": ["SPY"],
+                "quotes": ["SPY"],
+                "bars": ["SPY"]
+            }
+            ws.send(json.dumps(subscribe_message))
+            logger.info("Stream subscriptions sent")
+
+        # Create WebSocket connection with exponential backoff
+        max_retries = 5
+        base_delay = 5  # seconds
+        
+        while self.ws_running:
+            for attempt in range(max_retries):
+                try:
+                    # Add jitter to avoid thundering herd
+                    import random
+                    jitter = random.uniform(0, 1)
+                    delay = (base_delay * (2 ** attempt)) + jitter
+                    
+                    if attempt > 0:
+                        logger.info(f"Waiting {delay:.2f} seconds before retry {attempt + 1}/{max_retries}...")
+                        import time
+                        time.sleep(delay)
+                    
+                    # Create WebSocket connection
+                    websocket.enableTrace(True)
+                    self.ws = websocket.WebSocketApp(
+                        self.ws_endpoint,
+                        on_message=on_message,
+                        on_error=on_error,
+                        on_close=on_close,
+                        on_open=on_open
+                    )
+                    
+                    # Run the WebSocket connection
+                    self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
+                    
+                    # If we get here and ws_running is still True, try to reconnect
+                    if self.ws_running:
+                        logger.warning(f"WebSocket disconnected, attempting to reconnect...")
+                    else:
+                        break
+                        
+                except Exception as e:
+                    if attempt < max_retries - 1 and self.ws_running:
+                        logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                    else:
+                        logger.error(f"Failed to connect after {max_retries} attempts")
+                        self.ws_running = False
+                        break
+
+    async def start_streaming(self):
+        """Start streaming real-time market data"""
         try:
-            # Add new symbols to subscribed set
-            self.subscribed_symbols.update(symbols)
+            logger.info("Starting market data streaming...")
             
-            # Subscribe to bar updates
-            await self.stream_client.subscribe_bars(self._handle_bar, *symbols)
+            if self.ws_thread and self.ws_thread.is_alive():
+                logger.warning("WebSocket thread is already running")
+                return
             
-            logger.info(f"Subscribed to bar updates for: {symbols}")
+            self.ws_running = True
+            self.ws_thread = threading.Thread(target=self._run_websocket)
+            self.ws_thread.daemon = True  # Thread will be terminated when main program exits
+            self.ws_thread.start()
+            
         except Exception as e:
-            logger.error(f"Error subscribing to bars: {e}")
+            logger.error(f"Error connecting to streaming API: {e}", exc_info=True)
             raise
-    
+
+    def _handle_message(self, msg):
+        """Handle incoming WebSocket message"""
+        try:
+            msg_type = msg.get('T')
+            if msg_type == 'b':  # Bar data
+                # Create a task to handle the bar data
+                asyncio.create_task(self._handle_bar(msg))
+            elif msg_type == 't':  # Trade data
+                logger.debug(f"Trade received: {msg}")
+            elif msg_type == 'q':  # Quote data
+                logger.debug(f"Quote received: {msg}")
+            elif msg_type == 'success':  # Authentication success
+                logger.info("Authentication successful")
+            elif msg_type == 'error':  # Error message
+                logger.error(f"Stream error: {msg}")
+            else:
+                logger.warning(f"Unknown message type: {msg}")
+        except Exception as e:
+            logger.error(f"Error handling message: {e}", exc_info=True)
+
     async def _handle_bar(self, bar):
         """Handle incoming bar data"""
         try:
-            symbol = bar.symbol
-            if symbol not in self._latest_bars:
-                self._latest_bars[symbol] = pd.DataFrame()
-            
-            # Convert bar to DataFrame row
-            bar_data = {
-                'open': bar.open,
-                'high': bar.high,
-                'low': bar.low,
-                'close': bar.close,
-                'volume': bar.volume,
-                'timestamp': bar.timestamp
-            }
+            symbol = bar['S']
+            # Convert bar data to DataFrame format
+            bar_df = pd.DataFrame([{
+                'timestamp': bar['t'],
+                'open': bar['o'],
+                'high': bar['h'],
+                'low': bar['l'],
+                'close': bar['c'],
+                'volume': bar['v']
+            }])
             
             # Update latest bars
-            new_row = pd.DataFrame([bar_data])
-            self._latest_bars[symbol] = pd.concat([self._latest_bars[symbol], new_row], ignore_index=True)
+            self._latest_bars[symbol] = bar_df
             
-            # Notify callbacks
+            # Call registered callbacks
             for callback in self._callbacks:
-                await callback(symbol, self._latest_bars[symbol])
-                
+                try:
+                    await callback(symbol, bar_df)
+                except Exception as e:
+                    logger.error(f"Error in callback: {e}")
+            
         except Exception as e:
             logger.error(f"Error handling bar data: {e}")
-    
-    async def start_streaming(self):
-        """Start the streaming connection"""
-        try:
-            # Connect to the streaming client
-            await self.stream_client.connect()
-            
-            # Subscribe to any existing symbols
-            if self.subscribed_symbols:
-                await self.subscribe_to_bars(list(self.subscribed_symbols))
-            
-            # Start processing messages
-            await self.stream_client._run_forever()
-            
-        except Exception as e:
-            logger.error(f"Error starting streaming: {e}")
-            raise
-    
+
     async def stop_streaming(self):
-        """Stop the streaming connection"""
+        """Stop streaming market data"""
+        logger.info("Stopping market data streaming...")
+        
+        if self.ws:
+            try:
+                # Send unsubscribe message for all symbols
+                if self.subscribed_symbols:
+                    unsubscribe_msg = {
+                        "action": "unsubscribe",
+                        "trades": list(self.subscribed_symbols),
+                        "quotes": list(self.subscribed_symbols),
+                        "bars": list(self.subscribed_symbols)
+                    }
+                    self.ws.send(json.dumps(unsubscribe_msg))
+                
+                # Close WebSocket connection
+                self.ws.close()
+                self.ws = None
+                
+                # Clear subscribed symbols
+                self.subscribed_symbols.clear()
+                
+                # Stop WebSocket thread
+                self.ws_running = False
+                if self.ws_thread and self.ws_thread.is_alive():
+                    self.ws_thread.join(timeout=5)
+                    
+            except Exception as e:
+                logger.error(f"Error stopping WebSocket: {e}", exc_info=True)
+        
+        logger.info("Market data streaming stopped")
+
+    async def get_historical_bars(self, symbol: str, timeframe: str, start: datetime = None, end: datetime = None) -> pd.DataFrame:
+        """Get historical bars for a symbol"""
         try:
-            await self.stream_client.disconnect()
-            logger.info("Disconnected from Alpaca streaming API")
-        except Exception as e:
-            logger.error(f"Error disconnecting from streaming API: {e}")
-            raise
-    
-    async def get_bars(self, symbol: str, timeframe: str = "1H", limit: int = 100) -> pd.DataFrame:
-        """Fetch historical bars for a symbol"""
-        try:
-            # Calculate start and end times
-            end = datetime.now(pytz.UTC)
-            # For higher timeframes, we need more historical data to calculate indicators
-            multiplier = 3 if timeframe in ["4H", "1D"] else 1
-            start = end - timedelta(days=limit * multiplier)
-            
-            # Create the request
+            if not start:
+                start = datetime.now(pytz.UTC) - timedelta(days=7)
+            if not end:
+                end = datetime.now(pytz.UTC)
+
             request = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 timeframe=self.timeframe_map[timeframe],
@@ -132,57 +270,47 @@ class AlpacaDataManager:
                 end=end
             )
             
-            # Get the bars
             bars = self.hist_client.get_stock_bars(request)
+            return pd.DataFrame(bars[symbol])
             
-            # Convert to DataFrame
-            if bars and hasattr(bars, 'df'):
-                df = bars.df
-                
-                if len(df) == 0:
-                    raise ValueError(f"No data returned for {symbol}")
-                
-                # Reset index to make timestamp a column
-                df = df.reset_index(level=[0,1])
-                
-                # Basic data cleaning
-                df = df.dropna()
-                df = df.sort_values('timestamp')
-                
-                return df
-            else:
-                raise ValueError(f"No data returned for {symbol}")
-                
         except Exception as e:
-            logger.error(f"Error fetching data for {symbol}: {e}")
-            raise
-    
-    async def get_current_price(self, symbol: str) -> float:
-        """Get the current price for a symbol"""
-        try:
-            bars = await self.get_bars(symbol, timeframe="1Min", limit=1)
-            if len(bars) > 0:
-                return bars.iloc[-1]['close']
-            raise ValueError(f"No current price data for {symbol}")
-        except Exception as e:
-            logger.error(f"Error fetching current price for {symbol}: {e}")
-            raise
-    
-    async def get_multiple_symbols(self, symbols: List[str], timeframe: str = "1H", limit: int = 100) -> Dict[str, pd.DataFrame]:
-        """Fetch historical bars for multiple symbols"""
-        results = {}
-        for symbol in symbols:
-            try:
-                results[symbol] = await self.get_bars(symbol, timeframe, limit)
-            except Exception as e:
-                logger.error(f"Error fetching data for {symbol}: {e}")
-                continue
-        return results
-    
-    def register_callback(self, callback: Callable):
-        """Register a callback function for real-time updates."""
+            logger.error(f"Error fetching historical bars: {e}")
+            return pd.DataFrame()
+
+    def get_latest_bar(self, symbol: str) -> pd.DataFrame:
+        """Get the latest bar for a symbol"""
+        return self._latest_bars.get(symbol, pd.DataFrame())
+
+    def add_bar_callback(self, callback: Callable):
+        """Add a callback to be notified of new bars"""
         self._callbacks.append(callback)
-    
-    def get_latest_bars(self, symbol: str) -> Optional[pd.DataFrame]:
-        """Get the latest cached bars for a symbol."""
-        return self._latest_bars.get(symbol)
+
+    def remove_bar_callback(self, callback: Callable):
+        """Remove a callback"""
+        if callback in self._callbacks:
+            self._callbacks.remove(callback)
+
+    async def subscribe_to_symbol(self, symbol: str):
+        """Subscribe to market data for a symbol"""
+        if not self.ws or not self.ws_running:
+            logger.warning("WebSocket not connected, cannot subscribe")
+            return
+            
+        if symbol in self.subscribed_symbols:
+            logger.info(f"Already subscribed to {symbol}")
+            return
+            
+        # Add to subscribed symbols
+        self.subscribed_symbols.add(symbol)
+        
+        # Send subscription message
+        subscribe_msg = {
+            "action": "subscribe",
+            "trades": [symbol],
+            "quotes": [symbol],
+            "bars": [symbol],
+            "dailyBars": [symbol],
+            "statuses": [symbol]
+        }
+        self.ws.send(json.dumps(subscribe_msg))
+        logger.info("Stream subscriptions sent")
